@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.exceptions import NotFound
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -10,11 +11,79 @@ from django.db.models import Count
 from django.db.models.functions import TruncDate
 from .mixins import ViewCountMixin
 
-from .models import Mahsulot, Category, Tag, Article, Book, Course, VisitorLog
+from .models import Mahsulot, Category, Tag, Article, Book, Course, VisitorLog, Project, SoftwareApp, AppVersion, Documentation
 from .serializers import (
     MahsulotSerializer, CategorySerializer, TagSerializer, 
-    ArticleSerializer, BookSerializer, CourseSerializer
+    ArticleSerializer, BookSerializer, CourseSerializer,
+    ProjectSerializer, SoftwareAppSerializer, AppVersionSerializer, UserSerializer, DocumentationSerializer
 )
+
+class ProjectFilterMixin:
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        project_slug = self.request.query_params.get('project')
+        if project_slug:
+            queryset = queryset.filter(project__slug=project_slug)
+        return queryset
+
+class ProjectViewSet(viewsets.ModelViewSet):
+    queryset = Project.objects.all()
+    serializer_class = ProjectSerializer
+    lookup_field = 'slug'
+
+class SoftwareAppViewSet(ProjectFilterMixin, viewsets.ModelViewSet):
+    queryset = SoftwareApp.objects.all()
+    serializer_class = SoftwareAppSerializer
+    lookup_field = 'slug'
+
+    @action(detail=True, methods=['get'])
+    def latest_file(self, request, slug=None):
+        app = self.get_object()
+        version = app.versions.filter(is_active=True).first()
+        if version and version.file:
+            return FileResponse(version.file.open(), as_attachment=True, filename=version.file.name.split('/')[-1])
+        return Response({"error": "No active version found."}, status=status.HTTP_404_NOT_FOUND)
+
+class AppVersionViewSet(viewsets.ModelViewSet):
+    queryset = AppVersion.objects.all()
+    serializer_class = AppVersionSerializer
+
+class DocumentationViewSet(ProjectFilterMixin, viewsets.ModelViewSet):
+    queryset = Documentation.objects.select_related('project', 'parent').all()
+    serializer_class = DocumentationSerializer
+    lookup_field = 'slug'
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['include_children'] = self.request.query_params.get('tree') in {'1', 'true', 'True', 'yes'}
+        return context
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        if self.request.query_params.get('tree') in {'1', 'true', 'True', 'yes'}:
+            queryset = queryset.filter(parent__isnull=True)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def get_object(self):
+        queryset = self.filter_queryset(self.get_queryset())
+        slug = self.kwargs.get(self.lookup_field)
+
+        project_slug = self.request.query_params.get('project')
+        if project_slug:
+            return get_object_or_404(queryset, project__slug=project_slug, slug=slug)
+
+        matches = queryset.filter(slug=slug).order_by('project__name', 'order', 'created_at')
+        count = matches.count()
+        if count == 1:
+            return matches.first()
+        if count > 1:
+            root_match = matches.filter(parent__isnull=True).first()
+            if root_match:
+                return root_match
+            raise NotFound("Bu slug bir nechta project ichida mavjud. `project` query parametrini yuboring.")
+
+        raise NotFound("Documentation topilmadi.")
 
 class DashboardStatsAPI(APIView):
     def get(self, request):
@@ -54,7 +123,10 @@ class DashboardStatsAPI(APIView):
 
 class MahsulotAPI(APIView):
     def get(self, request):
-        malumot = Mahsulot.objects.all() 
+        project_slug = request.query_params.get('project')
+        malumot = Mahsulot.objects.all()
+        if project_slug:
+            malumot = malumot.filter(project__slug=project_slug)
         serializer = MahsulotSerializer(malumot, many=True)
         return Response(serializer.data)
 
@@ -65,15 +137,15 @@ class MahsulotAPI(APIView):
         serializer.save()
         return Response(serializer.data)
 
-class CategoryViewSet(viewsets.ModelViewSet):
+class CategoryViewSet(ProjectFilterMixin, viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
-class TagViewSet(viewsets.ModelViewSet):
+class TagViewSet(ProjectFilterMixin, viewsets.ModelViewSet):
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
 
-class ArticleViewSet(ViewCountMixin, viewsets.ModelViewSet):
+class ArticleViewSet(ProjectFilterMixin, ViewCountMixin, viewsets.ModelViewSet):
     queryset = Article.objects.select_related("category").prefetch_related("tags").all()
     serializer_class = ArticleSerializer
 
@@ -89,7 +161,7 @@ class ArticleViewSet(ViewCountMixin, viewsets.ModelViewSet):
 
         return get_object_or_404(queryset, slug=value)
 
-class BookViewSet(ViewCountMixin, viewsets.ModelViewSet):
+class BookViewSet(ProjectFilterMixin, ViewCountMixin, viewsets.ModelViewSet):
     queryset = Book.objects.select_related("category").prefetch_related("tags").all()
     serializer_class = BookSerializer
 
@@ -121,7 +193,7 @@ class BookViewSet(ViewCountMixin, viewsets.ModelViewSet):
             return FileResponse(book.sample_pdf_file.open(), as_attachment=False)
         return Response({"error": "Sample PDF not available."}, status=status.HTTP_404_NOT_FOUND)
 
-class CourseViewSet(ViewCountMixin, viewsets.ModelViewSet):
+class CourseViewSet(ProjectFilterMixin, ViewCountMixin, viewsets.ModelViewSet):
     queryset = Course.objects.select_related("category").prefetch_related("tags").all()
     serializer_class = CourseSerializer
 
