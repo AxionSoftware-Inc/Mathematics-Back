@@ -28,12 +28,12 @@ Band bo'lsa `.env.production` ichida almashtiriladi.
 
 ## Database
 
-Backend host'dagi PostgreSQL ga ulanadi:
+Backend shared PostgreSQL container ga ulanadi:
 
-- `DB_HOST=host.docker.internal`
+- `DB_HOST=shared_postgres`
 - `DB_PORT=5432`
 
-Container host PostgreSQL ni ko'rishi uchun compose `host-gateway` ishlatadi.
+Compose `shared_db` external network'ga ulanadi, shuning uchun mavjud `shared_postgres` konteyneri DNS bilan ko'rinadi.
 
 ## Bir martalik deploy
 

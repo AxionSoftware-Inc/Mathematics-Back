@@ -15,11 +15,12 @@ services:
     ports:
       - "${BACKEND_PORT:-8100}:8000"
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     volumes:
       - math_backend_media:/app/media
       - math_backend_static:/app/staticfiles
+    networks:
+      - default
+      - shared_db
 
   frontend:
     container_name: math-frontend
@@ -40,3 +41,8 @@ services:
 volumes:
   math_backend_media:
   math_backend_static:
+
+networks:
+  shared_db:
+    external: true
+    name: shared_db
