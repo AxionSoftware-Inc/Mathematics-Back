@@ -170,12 +170,12 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 JAZZMIN_SETTINGS = {
-    "site_title": "Quantum UZ Admin",
-    "site_header": "Quantum UZ",
-    "site_brand": "Quantum Dashboard",
+    "site_title": "MathSphere Admin",
+    "site_header": "MathSphere",
+    "site_brand": "MathSphere Dashboard",
     "site_logo_classes": "img-circle",
-    "welcome_sign": "Quantum UZ boshqaruv paneliga xush kelibsiz!",
-    "copyright": "Quantum UZ Team © 2026",
+    "welcome_sign": "MathSphere boshqaruv paneliga xush kelibsiz!",
+    "copyright": "MathSphere Team © 2026",
     
     "search_model": ["application.Article", "application.Book", "application.Course"],
     "user_avatar": None,
