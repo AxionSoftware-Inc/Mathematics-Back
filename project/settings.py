@@ -21,6 +21,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 
+def env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+def env_list(name: str, default: str) -> list[str]:
+    raw = os.getenv(name, default)
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
@@ -28,9 +40,9 @@ load_dotenv(BASE_DIR / ".env")
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-^m!5$ju_6sk_fo1*lo=u#%lv%7id5fp4dsh&fv)5wo7=x&)-!#")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() == "true"
+DEBUG = env_bool("DJANGO_DEBUG", True)
 
-ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 
 
 # Application definition
@@ -47,6 +59,8 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'application',
+    'paper_builder',
+    'laboratory',
 ]
 
 MIDDLEWARE = [
@@ -106,7 +120,7 @@ WSGI_APPLICATION = 'project.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'Data'),
+        'NAME': os.getenv('DB_NAME', 'Math'),
         'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', 'root'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
@@ -150,7 +164,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'static'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -241,20 +255,19 @@ JAZZMIN_UI_TWEAKS = {
 }
 
 # CORS settings
-CORS_ALLOWED_ORIGINS = [
-    "http://62.72.32.37:3000",
-    "https://62.72.32.37:3000",
-    "http://62.72.32.37:3001",
-    "https://62.72.32.37:3001",
-]
+CORS_ALLOW_ALL_ORIGINS = env_bool("DJANGO_CORS_ALLOW_ALL_ORIGINS", DEBUG)
+CORS_ALLOWED_ORIGINS = env_list(
+    "DJANGO_CORS_ALLOWED_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000",
+)
 
 # Optional but recommended for DRF + Session Authentication or CSRF protection
-CSRF_TRUSTED_ORIGINS = [
-    "http://62.72.32.37:3000",
-    "https://62.72.32.37:3000",
-    "http://62.72.32.37:3001",
-    "https://62.72.32.37:3001",
-]
+CSRF_TRUSTED_ORIGINS = env_list(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000",
+)
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # To allow all origins (less secure, use only for debugging if needed)
 # CORS_ALLOW_ALL_ORIGINS = True

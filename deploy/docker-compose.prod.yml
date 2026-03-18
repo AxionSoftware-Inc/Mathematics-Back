@@ -1,0 +1,42 @@
+services:
+  backend:
+    container_name: math-backend
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    env_file:
+      - .env.production
+    environment:
+      DJANGO_DEBUG: "False"
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn project.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120"
+    ports:
+      - "${BACKEND_PORT:-8100}:8000"
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - math_backend_media:/app/media
+      - math_backend_static:/app/staticfiles
+
+  frontend:
+    container_name: math-frontend
+    build:
+      context: ../../Math-Front
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NODE_ENV: production
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3100}:3000"
+    restart: unless-stopped
+
+volumes:
+  math_backend_media:
+  math_backend_static:

@@ -11,79 +11,19 @@ from django.db.models import Count
 from django.db.models.functions import TruncDate
 from .mixins import ViewCountMixin
 
-from .models import Mahsulot, Category, Tag, Article, Book, Course, VisitorLog, Project, SoftwareApp, AppVersion, Documentation
+from .models import Mahsulot, Category, Tag, Article, Book, Course, VisitorLog
 from .serializers import (
     MahsulotSerializer, CategorySerializer, TagSerializer, 
-    ArticleSerializer, BookSerializer, CourseSerializer,
-    ProjectSerializer, SoftwareAppSerializer, AppVersionSerializer, UserSerializer, DocumentationSerializer
+    ArticleSerializer, BookSerializer, CourseSerializer, UserSerializer
 )
 
 class ProjectFilterMixin:
     def get_queryset(self):
         queryset = super().get_queryset()
-        project_slug = self.request.query_params.get('project')
+        project_slug = self.request.query_params.get("project")
         if project_slug:
             queryset = queryset.filter(project__slug=project_slug)
         return queryset
-
-class ProjectViewSet(viewsets.ModelViewSet):
-    queryset = Project.objects.all()
-    serializer_class = ProjectSerializer
-    lookup_field = 'slug'
-
-class SoftwareAppViewSet(ProjectFilterMixin, viewsets.ModelViewSet):
-    queryset = SoftwareApp.objects.all()
-    serializer_class = SoftwareAppSerializer
-    lookup_field = 'slug'
-
-    @action(detail=True, methods=['get'])
-    def latest_file(self, request, slug=None):
-        app = self.get_object()
-        version = app.versions.filter(is_active=True).first()
-        if version and version.file:
-            return FileResponse(version.file.open(), as_attachment=True, filename=version.file.name.split('/')[-1])
-        return Response({"error": "No active version found."}, status=status.HTTP_404_NOT_FOUND)
-
-class AppVersionViewSet(viewsets.ModelViewSet):
-    queryset = AppVersion.objects.all()
-    serializer_class = AppVersionSerializer
-
-class DocumentationViewSet(ProjectFilterMixin, viewsets.ModelViewSet):
-    queryset = Documentation.objects.select_related('project', 'parent').all()
-    serializer_class = DocumentationSerializer
-    lookup_field = 'slug'
-
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context['include_children'] = self.request.query_params.get('tree') in {'1', 'true', 'True', 'yes'}
-        return context
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        if self.request.query_params.get('tree') in {'1', 'true', 'True', 'yes'}:
-            queryset = queryset.filter(parent__isnull=True)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
-
-    def get_object(self):
-        queryset = self.filter_queryset(self.get_queryset())
-        slug = self.kwargs.get(self.lookup_field)
-
-        project_slug = self.request.query_params.get('project')
-        if project_slug:
-            return get_object_or_404(queryset, project__slug=project_slug, slug=slug)
-
-        matches = queryset.filter(slug=slug).order_by('project__name', 'order', 'created_at')
-        count = matches.count()
-        if count == 1:
-            return matches.first()
-        if count > 1:
-            root_match = matches.filter(parent__isnull=True).first()
-            if root_match:
-                return root_match
-            raise NotFound("Bu slug bir nechta project ichida mavjud. `project` query parametrini yuboring.")
-
-        raise NotFound("Documentation topilmadi.")
 
 class DashboardStatsAPI(APIView):
     def get(self, request):
@@ -148,6 +88,12 @@ class TagViewSet(ProjectFilterMixin, viewsets.ModelViewSet):
 class ArticleViewSet(ProjectFilterMixin, ViewCountMixin, viewsets.ModelViewSet):
     queryset = Article.objects.select_related("category").prefetch_related("tags").all()
     serializer_class = ArticleSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.method == "GET":
+            queryset = queryset.filter(is_published=True)
+        return queryset
 
     def get_object(self):
         queryset = self.filter_queryset(self.get_queryset())
