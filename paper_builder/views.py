@@ -1,3 +1,4 @@
+from django.db.models import Count
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
 from .models import ScientificPaper
@@ -9,7 +10,9 @@ class ScientificPaperViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny] # Allow any since this is a global writing tool for now
 
     def get_queryset(self):
-        queryset = ScientificPaper.objects.select_related("article").all()
+        queryset = ScientificPaper.objects.select_related("article").prefetch_related("sections").annotate(
+            section_count=Count("sections")
+        )
         status_value = self.request.query_params.get("status")
         search = self.request.query_params.get("q")
 

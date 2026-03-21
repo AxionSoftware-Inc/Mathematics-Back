@@ -11,19 +11,11 @@ from django.db.models import Count
 from django.db.models.functions import TruncDate
 from .mixins import ViewCountMixin
 
-from .models import Mahsulot, Category, Tag, Article, Book, Course, VisitorLog
+from .models import Category, Tag, Article, Book, Course, VisitorLog
 from .serializers import (
-    MahsulotSerializer, CategorySerializer, TagSerializer, 
+    CategorySerializer, TagSerializer, 
     ArticleSerializer, BookSerializer, CourseSerializer, UserSerializer
 )
-
-class ProjectFilterMixin:
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        project_slug = self.request.query_params.get("project")
-        if project_slug:
-            queryset = queryset.filter(project__slug=project_slug)
-        return queryset
 
 class DashboardStatsAPI(APIView):
     def get(self, request):
@@ -61,31 +53,15 @@ class DashboardStatsAPI(APIView):
         
         return Response(stats)
 
-class MahsulotAPI(APIView):
-    def get(self, request):
-        project_slug = request.query_params.get('project')
-        malumot = Mahsulot.objects.all()
-        if project_slug:
-            malumot = malumot.filter(project__slug=project_slug)
-        serializer = MahsulotSerializer(malumot, many=True)
-        return Response(serializer.data)
-
-    def post(self, request):
-        kop_narsami = isinstance(request.data, list)
-        serializer = MahsulotSerializer(data=request.data, many=kop_narsami)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-
-class CategoryViewSet(ProjectFilterMixin, viewsets.ModelViewSet):
+class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
-class TagViewSet(ProjectFilterMixin, viewsets.ModelViewSet):
+class TagViewSet(viewsets.ModelViewSet):
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
 
-class ArticleViewSet(ProjectFilterMixin, ViewCountMixin, viewsets.ModelViewSet):
+class ArticleViewSet(ViewCountMixin, viewsets.ModelViewSet):
     queryset = Article.objects.select_related("category").prefetch_related("tags").all()
     serializer_class = ArticleSerializer
 
@@ -107,7 +83,7 @@ class ArticleViewSet(ProjectFilterMixin, ViewCountMixin, viewsets.ModelViewSet):
 
         return get_object_or_404(queryset, slug=value)
 
-class BookViewSet(ProjectFilterMixin, ViewCountMixin, viewsets.ModelViewSet):
+class BookViewSet(ViewCountMixin, viewsets.ModelViewSet):
     queryset = Book.objects.select_related("category").prefetch_related("tags").all()
     serializer_class = BookSerializer
 
@@ -139,7 +115,7 @@ class BookViewSet(ProjectFilterMixin, ViewCountMixin, viewsets.ModelViewSet):
             return FileResponse(book.sample_pdf_file.open(), as_attachment=False)
         return Response({"error": "Sample PDF not available."}, status=status.HTTP_404_NOT_FOUND)
 
-class CourseViewSet(ProjectFilterMixin, ViewCountMixin, viewsets.ModelViewSet):
+class CourseViewSet(ViewCountMixin, viewsets.ModelViewSet):
     queryset = Course.objects.select_related("category").prefetch_related("tags").all()
     serializer_class = CourseSerializer
 

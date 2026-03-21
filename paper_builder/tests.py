@@ -1,23 +1,37 @@
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from application.models import Article, Project
+from application.models import Article
 from paper_builder.models import ScientificPaper
 
 
 class ScientificPaperApiTests(APITestCase):
-    def setUp(self):
-        self.project = Project.objects.create(name="Quantum Uz", slug="quantum-uz")
-
     def test_published_paper_syncs_to_public_article(self):
         response = self.client.post(
             "/api/builder/papers/",
             {
                 "title": "Fourier Analysis Notes",
                 "abstract": "A concise overview of Fourier techniques.",
-                "content": "# Fourier\n\nThis paper studies transforms.",
                 "authors": "A. Mathematician",
                 "status": "published",
+                "branding_enabled": True,
+                "branding_label": "Powered by MathSphere Writer",
+                "sections": [
+                    {
+                        "title": "Introduction",
+                        "kind": "section",
+                        "progress_state": "drafting",
+                        "order": 1,
+                        "content": "This paper studies transforms.",
+                    },
+                    {
+                        "title": "Results",
+                        "kind": "section",
+                        "progress_state": "done",
+                        "order": 2,
+                        "content": "We compare periodic and aperiodic cases.",
+                    },
+                ],
             },
             format="json",
         )
@@ -32,7 +46,11 @@ class ScientificPaperApiTests(APITestCase):
         self.assertEqual(paper.article.summary, paper.abstract)
         self.assertEqual(paper.article.author, paper.authors)
         self.assertTrue(paper.article.is_published)
-        self.assertEqual(paper.article.project, self.project)
+        self.assertEqual(paper.sections.count(), 2)
+        self.assertEqual(paper.sections.order_by("order").first().progress_state, "drafting")
+        self.assertIn("## Introduction", paper.content)
+        self.assertIn("_Powered by MathSphere Writer_", paper.content)
+        self.assertIn("_Powered by MathSphere Writer_", paper.article.content)
 
     def test_published_paper_requires_title_and_content(self):
         response = self.client.post(
@@ -80,9 +98,6 @@ class ScientificPaperApiTests(APITestCase):
 
 
 class PublicArticleSyncTests(APITestCase):
-    def setUp(self):
-        self.project = Project.objects.create(name="Quantum Uz", slug="quantum-uz")
-
     def test_synced_article_is_visible_in_public_articles_api(self):
         paper = ScientificPaper.objects.create(
             title="Number Theory",
@@ -99,19 +114,18 @@ class PublicArticleSyncTests(APITestCase):
         self.assertEqual(response.data["summary"], "Prime numbers and more.")
         self.assertEqual(Article.objects.filter(source_paper=paper).count(), 1)
 
-    def test_synced_article_appears_in_project_filtered_public_list(self):
-        ScientificPaper.objects.create(
+    def test_synced_article_appears_in_public_list(self):
+        paper = ScientificPaper.objects.create(
             title="Combinatorics",
             abstract="Counting methods.",
             content="Published content",
             status="published",
         )
 
-        response = self.client.get("/api/articles/?project=quantum-uz")
+        response = self.client.get("/api/articles/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]["title"], "Combinatorics")
+        self.assertTrue(any(item["id"] == paper.article_id for item in response.data))
 
     def test_unpublished_synced_article_is_hidden_from_public_articles_api(self):
         paper = ScientificPaper.objects.create(

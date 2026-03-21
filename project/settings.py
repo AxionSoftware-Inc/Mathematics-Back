@@ -11,8 +11,31 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 import os
+import copy
 from pathlib import Path
 from dotenv import load_dotenv
+
+# --- Python 3.14 Compatibility Patch ---
+import django.template.context
+def _patched_copy(self):
+    # RequestContext constructor side effects drop internal attrs such as
+    # `_processors_index`, which admin/Jazzmin rely on while rendering.
+    obj = self.__class__.__new__(self.__class__)
+    obj.__dict__ = self.__dict__.copy()
+    obj.dicts = self.dicts.copy()
+
+    if hasattr(self, "render_context"):
+        obj.render_context = copy.copy(self.render_context)
+
+    if hasattr(self, "_processors"):
+        obj._processors = self._processors
+
+    if hasattr(self, "_processors_index"):
+        obj._processors_index = self._processors_index
+
+    return obj
+django.template.context.BaseContext.__copy__ = _patched_copy
+# ----------------------------------------
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -188,7 +211,7 @@ JAZZMIN_SETTINGS = {
     "show_sidebar": True,
     "navigation_expanded": True,
     "hide_apps": [],
-    "hide_models": ["auth.Group", "application.Mahsulot"],
+    "hide_models": ["auth.Group", "auth.User"],
 
     "custom_links": {
         "application": [{
@@ -271,3 +294,4 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # To allow all origins (less secure, use only for debugging if needed)
 # CORS_ALLOW_ALL_ORIGINS = True
+

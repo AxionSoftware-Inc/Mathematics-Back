@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    MahsulotAPI, CategoryViewSet, TagViewSet, ArticleViewSet, 
+    CategoryViewSet, TagViewSet, ArticleViewSet, 
     BookViewSet, CourseViewSet, DashboardStatsAPI, UserViewSet
 )
 
@@ -15,6 +15,5 @@ router.register(r'users', UserViewSet, basename='users')
 
 urlpatterns = [
     path('admin-dashboard-stats/', DashboardStatsAPI.as_view(), name='admin-dashboard-stats'),
-    path('mahsulot/', MahsulotAPI.as_view(), name='mahsulot-api'),
     path('', include(router.urls)),
 ]

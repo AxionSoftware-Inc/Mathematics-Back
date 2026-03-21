@@ -1,19 +1,11 @@
 from rest_framework import serializers
-
 from .models import LaboratoryModule
 
-
 class LaboratoryModuleSerializer(serializers.ModelSerializer):
-    project_slug = serializers.ReadOnlyField(source="project.slug")
-    project_name = serializers.ReadOnlyField(source="project.name")
-
     class Meta:
         model = LaboratoryModule
         fields = [
             "id",
-            "project",
-            "project_slug",
-            "project_name",
             "title",
             "slug",
             "summary",
@@ -29,4 +21,3 @@ class LaboratoryModuleSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-

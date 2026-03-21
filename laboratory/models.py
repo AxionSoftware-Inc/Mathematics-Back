@@ -1,8 +1,5 @@
 from django.db import models
 
-from application.models import Project
-
-
 class LaboratoryModule(models.Model):
     CATEGORY_CHOICES = (
         ("matrix", "Matrix"),
@@ -19,13 +16,6 @@ class LaboratoryModule(models.Model):
         ("server", "Server"),
     )
 
-    project = models.ForeignKey(
-        Project,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="laboratory_modules",
-    )
     title = models.CharField(max_length=120)
     slug = models.SlugField(unique=True)
     summary = models.CharField(max_length=255)
@@ -50,4 +40,3 @@ class LaboratoryModule(models.Model):
 
     def __str__(self):
         return self.title
-

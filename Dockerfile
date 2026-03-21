@@ -15,8 +15,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY . .
 
+# Copy and prepare entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Expose Django port
 EXPOSE 8000
 
-# We use gunicorn to serve applications dynamically and securely.
-CMD ["gunicorn", "project.wsgi:application", "--bind", "0.0.0.0:8000"]
+# Set entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
