@@ -20,4 +20,4 @@ python manage.py collectstatic --noinput
 
 # Start Gunicorn
 echo "Starting gunicorn..."
-exec gunicorn project.wsgi:application --bind 0.0.0.0:8000
+exec gunicorn project.wsgi:application --bind 0.0.0.0:8000 --access-logfile - "$@"
