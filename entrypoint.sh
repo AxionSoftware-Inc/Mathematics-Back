@@ -10,13 +10,7 @@ set -e
 # done
 # echo "PostgreSQL started"
 
-# Apply database migrations
-echo "Applying database migrations..."
-python manage.py migrate --noinput
-
-# Collect static files
-echo "Collecting static files..."
-python manage.py collectstatic --noinput
+# Pre-execution checks can go here
 
 # Execute the final command
 echo "Executing command: $@"
