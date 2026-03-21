@@ -18,6 +18,6 @@ python manage.py migrate --noinput
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
-# Start Gunicorn
-echo "Starting gunicorn..."
-exec gunicorn project.wsgi:application --bind 0.0.0.0:8000 --access-logfile - "$@"
+# Execute the final command
+echo "Executing command: $@"
+exec "$@"
