@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import LaboratoryModule
 
+
 class LaboratoryModuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = LaboratoryModule
@@ -21,3 +22,9 @@ class LaboratoryModuleSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class IntegralSolveRequestSerializer(serializers.Serializer):
+    expression = serializers.CharField(max_length=400)
+    lower = serializers.CharField(max_length=80)
+    upper = serializers.CharField(max_length=80)

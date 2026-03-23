@@ -12,3 +12,4 @@ sqlparse
 tzdata
 gunicorn
 whitenoise
+sympy
