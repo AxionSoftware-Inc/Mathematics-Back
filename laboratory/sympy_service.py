@@ -4,8 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from sympy import E, Abs, Symbol, exp, latex, log, oo, pi, simplify, sqrt, sympify
-from sympy import sin, cos, tan, cot, asin, acos, atan, sinh, cosh, tanh
+from sympy import Abs, E, Symbol, cos, cot, exp, latex, log, oo, pi, simplify, sin, sqrt, sympify, tan
+from sympy import acos, asin, atan, cosh, sinh, tanh
 from sympy.parsing.sympy_parser import (
     convert_xor,
     implicit_multiplication_application,
@@ -39,10 +39,11 @@ SYMPY_BASE_LOCALS = {
 }
 
 NORMALIZATION_PATTERNS = (
-    (re.compile(r"π"), "pi", "π `pi` ga o'girilgan."),
-    (re.compile(r"∞"), "oo", "∞ `oo` ko'rinishiga o'girilgan."),
+    (re.compile(r"π"), "pi", "`π` `pi` ga o'girilgan."),
+    (re.compile(r"∞"), "oo", "`∞` `oo` ko'rinishiga o'girilgan."),
+    (re.compile(r"(?<![A-Za-z_])(?:inf|infinity)(?![A-Za-z_])", flags=re.IGNORECASE), "oo", "`inf` `oo` ko'rinishiga o'girilgan."),
     (re.compile(r"[−–—]"), "-", "Unicode minus oddiy `-` ko'rinishiga o'girilgan."),
-    (re.compile(r"[×·]"), "*", "Ko'paytirish belgisi `*` ko'rinishiga o'girilgan."),
+    (re.compile(r"[×⋅·]"), "*", "Ko'paytirish belgisi `*` ko'rinishiga o'girilgan."),
     (re.compile(r"÷"), "/", "Bo'lish belgisi `/` ko'rinishiga o'girilgan."),
     (re.compile(r"√"), "sqrt", "`√` `sqrt` ko'rinishiga o'girilgan."),
     (re.compile(r"\bln\b", flags=re.IGNORECASE), "log", "`ln` `log` ga o'girilgan."),
@@ -117,7 +118,7 @@ def parse_user_math_input(
             evaluate=True,
         )
         parsed = sympify(parsed, locals=local_dict, evaluate=True)
-    except Exception as exc:  # pragma: no cover - parser error shapes vary
+    except Exception as exc:  # pragma: no cover
         raise MathParserError(f"{label} o'qilmadi: {exc}") from exc
 
     free_symbols = parsed.free_symbols - allowed_symbols

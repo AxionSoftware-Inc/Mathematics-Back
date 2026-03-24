@@ -26,5 +26,5 @@ class LaboratoryModuleSerializer(serializers.ModelSerializer):
 
 class IntegralSolveRequestSerializer(serializers.Serializer):
     expression = serializers.CharField(max_length=400)
-    lower = serializers.CharField(max_length=80)
-    upper = serializers.CharField(max_length=80)
+    lower = serializers.CharField(max_length=80, allow_blank=True, required=False, default="")
+    upper = serializers.CharField(max_length=80, allow_blank=True, required=False, default="")

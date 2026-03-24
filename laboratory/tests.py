@@ -80,3 +80,44 @@ class IntegralSolveApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], "needs_numerical")
         self.assertTrue(response.data["can_offer_numerical"])
+
+    def test_indefinite_integral_lane_returns_antiderivative(self):
+        url = reverse("laboratory-integral-solve")
+        response = self.client.post(
+            url,
+            {"expression": "x^2", "lower": "", "upper": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertFalse(response.data["can_offer_numerical"])
+        self.assertEqual(response.data["input"]["lane"], "indefinite_single")
+        self.assertEqual(response.data["exact"]["evaluated_latex"], "\\frac{x^{3}}{3} + C")
+
+    def test_improper_integral_lane_handles_infinite_bound(self):
+        url = reverse("laboratory-integral-solve")
+        response = self.client.post(
+            url,
+            {"expression": "exp(-x)", "lower": "0", "upper": "inf"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertFalse(response.data["can_offer_numerical"])
+        self.assertEqual(response.data["input"]["lane"], "improper_single")
+        self.assertEqual(response.data["exact"]["evaluated_latex"], "1")
+
+    def test_endpoint_singularity_uses_improper_lane(self):
+        url = reverse("laboratory-integral-solve")
+        response = self.client.post(
+            url,
+            {"expression": "1/sqrt(x)", "lower": "0", "upper": "1"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["input"]["lane"], "improper_single")
+        self.assertEqual(response.data["exact"]["evaluated_latex"], "2")
