@@ -51,6 +51,31 @@ def infer_hazards(expression_text: str, lower_text: str | None = None, upper_tex
     return hazards
 
 
+def infer_piecewise_regions(expression_text: str) -> list[dict[str, str]]:
+    normalized = expression_text.replace(" ", "").lower()
+    regions: list[dict[str, str]] = []
+    if "abs(x)" in normalized:
+        regions.extend(
+            [
+                {"region": "x < 0", "behavior": "abs(x) = -x"},
+                {"region": "x >= 0", "behavior": "abs(x) = x"},
+            ]
+        )
+    if "sign(x)" in normalized:
+        regions.extend(
+            [
+                {"region": "x < 0", "behavior": "sign(x) = -1"},
+                {"region": "x = 0", "behavior": "sign(x) = 0"},
+                {"region": "x > 0", "behavior": "sign(x) = 1"},
+            ]
+        )
+    if "piecewise" in normalized:
+        regions.append({"region": "multiple branches", "behavior": "Explicit SymPy Piecewise expression detected."})
+    if "max(" in normalized or "min(" in normalized:
+        regions.append({"region": "comparison split", "behavior": "max/min introduces branch-dependent regions."})
+    return regions
+
+
 def build_diagnostics_payload(
     *,
     expression_text: str,
@@ -60,12 +85,17 @@ def build_diagnostics_payload(
     convergence_detail: str = "",
     singularity: str = "none",
 ) -> dict[str, Any]:
+    piecewise_regions = infer_piecewise_regions(expression_text)
     return {
         "convergence": convergence,
         "convergence_detail": convergence_detail,
         "singularity": singularity,
         "domain_constraints": infer_domain_constraints(expression_text),
         "hazards": infer_hazards(expression_text, lower_text, upper_text),
+        "piecewise": {
+            "active": bool(piecewise_regions),
+            "regions": piecewise_regions,
+        },
     }
 
 

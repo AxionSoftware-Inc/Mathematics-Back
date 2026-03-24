@@ -121,3 +121,15 @@ class IntegralSolveApiTests(APITestCase):
         self.assertEqual(response.data["status"], "exact")
         self.assertEqual(response.data["input"]["lane"], "improper_single")
         self.assertEqual(response.data["exact"]["evaluated_latex"], "2")
+
+    def test_piecewise_branch_metadata_is_returned(self):
+        url = reverse("laboratory-integral-solve")
+        response = self.client.post(
+            url,
+            {"expression": "abs(x)", "lower": "-1", "upper": "1"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data["diagnostics"]["piecewise"]["active"])
+        self.assertEqual(len(response.data["diagnostics"]["piecewise"]["regions"]), 2)
