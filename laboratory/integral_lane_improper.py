@@ -45,10 +45,14 @@ def solve_improper_single_integral(expression: str, lower: str, upper: str) -> I
         "parser": parser_payload,
         "diagnostics": build_diagnostics_payload(
             expression_text=expression,
+            expression=integrand,
+            lower_expr=lower_bound,
+            upper_expr=upper_bound,
             lower_text=lower,
             upper_text=upper,
             convergence="unresolved",
             convergence_detail="Improper integral requires limit and singularity diagnostics.",
+            convergence_reason="improper_limit_analysis",
             singularity="endpoint" if lower.strip() == "0" or upper.strip() == "0" else "possible",
         ),
     }
@@ -63,6 +67,7 @@ def solve_improper_single_integral(expression: str, lower: str, upper: str) -> I
                     **base_payload["diagnostics"],
                     "convergence": "unresolved",
                     "convergence_detail": "SymPy could not close the improper limit analytically.",
+                    "convergence_reason": "symbolic_limit_unresolved",
                 },
                 "reason": "sympy_could_not_resolve_improper_integral",
                 "can_offer_numerical": False,
@@ -94,6 +99,7 @@ def solve_improper_single_integral(expression: str, lower: str, upper: str) -> I
                     **base_payload["diagnostics"],
                     "convergence": "divergent",
                     "convergence_detail": "Improper limit evaluation produced a non-finite result.",
+                    "convergence_reason": "non_finite_limit",
                 },
                 "reason": "improper_integral_diverges",
                 "can_offer_numerical": False,
@@ -138,6 +144,7 @@ def solve_improper_single_integral(expression: str, lower: str, upper: str) -> I
                 **base_payload["diagnostics"],
                 "convergence": "convergent",
                 "convergence_detail": "Symbolic limit evaluation resolved to a finite value.",
+                "convergence_reason": "finite_symbolic_limit",
             },
             "can_offer_numerical": False,
             "exact": {

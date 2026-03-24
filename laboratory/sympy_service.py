@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from sympy import Abs, E, Symbol, cos, cot, exp, latex, log, oo, pi, simplify, sin, sqrt, sympify, tan
+from sympy import Abs, E, I, Symbol, cos, cot, exp, latex, log, oo, pi, simplify, sin, sqrt, sympify, tan
 from sympy import acos, asin, atan, cosh, sinh, tanh
 from sympy.parsing.sympy_parser import (
     convert_xor,
@@ -20,6 +20,8 @@ SYMPY_BASE_LOCALS = {
     "pi": pi,
     "e": E,
     "E": E,
+    "I": I,
+    "i": I,
     "sin": sin,
     "cos": cos,
     "tan": tan,

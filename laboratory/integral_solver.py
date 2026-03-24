@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from .integral_lane_common import IntegralSolveResult, IntegralSolverError
+from .integral_lane_contour import solve_contour_integral
 from .integral_lane_definite import solve_definite_single_integral
+from .integral_lane_geometry import detect_geometry_lane
 from .integral_lane_improper import solve_improper_single_integral
 from .integral_lane_indefinite import solve_indefinite_single_integral
+from .integral_lane_line import solve_line_integral
+from .integral_lane_surface import solve_surface_integral
 
 
 def _has_endpoint_singularity(expression: str, lower: str, upper: str) -> bool:
@@ -23,6 +27,14 @@ def _has_endpoint_singularity(expression: str, lower: str, upper: str) -> bool:
 
 
 def solve_single_integral(expression: str, lower: str, upper: str) -> IntegralSolveResult:
+    geometry_lane = detect_geometry_lane(expression)
+    if geometry_lane == "line":
+        return solve_line_integral(expression)
+    if geometry_lane == "surface":
+        return solve_surface_integral(expression)
+    if geometry_lane == "contour":
+        return solve_contour_integral(expression)
+
     normalized_lower = lower.strip()
     normalized_upper = upper.strip()
 

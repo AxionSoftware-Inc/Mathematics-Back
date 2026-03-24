@@ -133,3 +133,199 @@ class IntegralSolveApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["diagnostics"]["piecewise"]["active"])
         self.assertEqual(len(response.data["diagnostics"]["piecewise"]["regions"]), 2)
+        self.assertEqual(response.data["diagnostics"]["piecewise"]["source"], "abs")
+
+    def test_structured_domain_diagnostics_are_returned(self):
+        url = reverse("laboratory-integral-solve")
+        response = self.client.post(
+            url,
+            {"expression": "log(x)/(x-1)", "lower": "2", "upper": "3"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        constraints = response.data["diagnostics"]["domain_analysis"]["constraints"]
+        hazards = response.data["diagnostics"]["hazard_details"]
+        self.assertTrue(any(item["kind"] == "log_argument_positive" for item in constraints))
+        self.assertTrue(any(item["kind"] == "denominator_nonzero" for item in constraints))
+        self.assertTrue(any(item["kind"] == "pole" for item in hazards))
+
+    def test_improper_diagnostics_include_convergence_reason(self):
+        url = reverse("laboratory-integral-solve")
+        response = self.client.post(
+            url,
+            {"expression": "exp(-x)", "lower": "0", "upper": "inf"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["diagnostics"]["convergence"], "convergent")
+        self.assertEqual(response.data["diagnostics"]["convergence_reason"], "finite_symbolic_limit")
+
+    def test_line_integral_lane_solves_parametric_circulation(self):
+        url = reverse("laboratory-integral-solve")
+        response = self.client.post(
+            url,
+            {"expression": "line(P=-y, Q=x, path=(cos(t), sin(t)), t:[0, 2*pi])", "lower": "", "upper": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["input"]["lane"], "line_integral")
+        self.assertEqual(response.data["exact"]["evaluated_latex"], "2 \\pi")
+
+    def test_surface_integral_lane_solves_parametric_flux(self):
+        url = reverse("laboratory-integral-solve")
+        response = self.client.post(
+            url,
+            {"expression": "surface(f=(0, 0, 1), patch=(u, v, u + v), u:[0,1], v:[0,1])", "lower": "", "upper": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["input"]["lane"], "surface_integral")
+        self.assertEqual(response.data["exact"]["evaluated_latex"], "1")
+
+    def test_contour_integral_lane_solves_parametric_path(self):
+        url = reverse("laboratory-integral-solve")
+        response = self.client.post(
+            url,
+            {"expression": "contour(f=1/z, path=exp(I*t), t:[0, 2*pi])", "lower": "", "upper": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["input"]["lane"], "contour_integral")
+        self.assertEqual(response.data["exact"]["evaluated_latex"], "2 i \\pi")
+
+
+class DifferentialSolveApiTests(APITestCase):
+    def test_derivative_lane_returns_exact_result(self):
+        url = reverse("laboratory-differential-solve")
+        response = self.client.post(
+            url,
+            {"mode": "derivative", "expression": "x^3", "variable": "x", "point": "2", "order": "1"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["input"]["lane"], "derivative")
+        self.assertTrue(response.data["exact"]["numeric_approximation"].startswith("12."))
+
+    def test_directional_lane_uses_direction_vector(self):
+        url = reverse("laboratory-differential-solve")
+        response = self.client.post(
+            url,
+            {
+                "mode": "directional",
+                "expression": "x^2 + y^2",
+                "variable": "x, y",
+                "point": "1, 0",
+                "direction": "1, 1",
+                "coordinates": "cartesian",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["input"]["lane"], "directional")
+        self.assertTrue(response.data["diagnostics"]["directional"]["active"])
+        self.assertEqual(response.data["exact"]["method_label"], "Symbolic Directional Derivative")
+        self.assertIsNotNone(response.data["exact"]["evaluated_latex"])
+
+    def test_jacobian_lane_returns_matrix_diagnostics(self):
+        url = reverse("laboratory-differential-solve")
+        response = self.client.post(
+            url,
+            {
+                "mode": "jacobian",
+                "expression": "[x + y, x - y]",
+                "variable": "x, y",
+                "point": "1, 2",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["diagnostics"]["matrix"]["lane"], "jacobian")
+        self.assertEqual(response.data["diagnostics"]["matrix"]["shape"], "2x2")
+        self.assertIn(response.data["diagnostics"]["matrix"]["determinant_status"], {"invertible", "near_singular"})
+
+    def test_hessian_lane_returns_curvature_diagnostics(self):
+        url = reverse("laboratory-differential-solve")
+        response = self.client.post(
+            url,
+            {
+                "mode": "hessian",
+                "expression": "x^2 + y^2",
+                "variable": "x, y",
+                "point": "0, 0",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["diagnostics"]["matrix"]["lane"], "hessian")
+        self.assertEqual(response.data["diagnostics"]["matrix"]["critical_point_type"], "Local minimum")
+        self.assertEqual(response.data["exact"]["critical_point_type"], "Local minimum")
+
+    def test_ode_lane_solves_first_order_ivp(self):
+        url = reverse("laboratory-differential-solve")
+        response = self.client.post(
+            url,
+            {
+                "mode": "ode",
+                "expression": "y' = y; y(0)=1",
+                "variable": "x",
+                "point": "y(0)=1",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["input"]["lane"], "ode")
+        self.assertIn("y", response.data["exact"]["derivative_latex"])
+
+    def test_pde_lane_solves_first_order_transport_family(self):
+        url = reverse("laboratory-differential-solve")
+        response = self.client.post(
+            url,
+            {
+                "mode": "pde",
+                "expression": "u_t = u_x",
+                "variable": "x, t",
+                "point": "",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["input"]["lane"], "pde")
+        self.assertEqual(response.data["exact"]["method_label"], "SymPy pdsolve")
+
+    def test_sde_lane_runs_euler_maruyama(self):
+        url = reverse("laboratory-differential-solve")
+        response = self.client.post(
+            url,
+            {
+                "mode": "sde",
+                "expression": "dX = 0.4*X*dt + 0.2*X*dW; X(0)=1; t:[0,1]; n=64",
+                "variable": "t",
+                "point": "X(0)=1; t:[0,1]; n=64",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["input"]["lane"], "sde")
+        self.assertEqual(response.data["exact"]["method_label"], "Euler-Maruyama")

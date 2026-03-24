@@ -38,8 +38,10 @@ def solve_indefinite_single_integral(expression: str) -> IntegralSolveResult:
         "parser": parser_payload,
         "diagnostics": build_diagnostics_payload(
             expression_text=expression,
+            expression=integrand,
             convergence="not_applicable",
             convergence_detail="Indefinite symbolic lane does not run numerical convergence checks.",
+            convergence_reason="indefinite_symbolic_lane",
             singularity="possible" if "/" in expression.replace(" ", "") else "none",
         ),
     }

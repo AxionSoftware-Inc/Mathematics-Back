@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from sympy import Integral, Symbol, exp, latex, log, simplify
-from sympy import sin, cos, tan
+from sympy import Abs, Eq, FiniteSet, Integral, Max, Min, Piecewise, S, Symbol, denom, exp, latex, log, simplify, solveset
+from sympy import sin, cos, tan, sign
+from sympy.core.power import Pow
 
 from .sympy_service import ParsedMathInput
 
@@ -23,79 +24,292 @@ class IntegralSolveResult:
     payload: dict[str, Any]
 
 
-def infer_domain_constraints(expression_text: str) -> list[str]:
-    normalized = expression_text.replace(" ", "").lower()
-    constraints: list[str] = []
-    if "log(" in normalized or "ln(" in normalized:
-        constraints.append("Log arguments must stay positive.")
-    if "sqrt(" in normalized:
-        constraints.append("Square-root radicands must stay nonnegative.")
-    if "/" in normalized:
-        constraints.append("Denominators must stay nonzero on the active domain.")
-    return constraints
+def _format_condition_text(condition: Any) -> str:
+    if condition is True:
+        return "always"
+    if condition is False:
+        return "never"
+    return latex(condition)
 
 
-def infer_hazards(expression_text: str, lower_text: str | None = None, upper_text: str | None = None) -> list[str]:
-    normalized = expression_text.replace(" ", "").lower()
-    lower_value = (lower_text or "").strip().lower()
-    upper_value = (upper_text or "").strip().lower()
-    hazards: list[str] = []
-    if "/x" in normalized and (lower_value == "0" or upper_value == "0"):
-        hazards.append("Endpoint pole at x = 0.")
-    if "1/sqrt(x)" in normalized and (lower_value == "0" or upper_value == "0"):
-        hazards.append("Endpoint root singularity at x = 0.")
-    if "log(x)" in normalized and lower_value == "0":
-        hazards.append("Log singularity at x = 0.")
-    if any(token in lower_value for token in ("inf", "infinity", "oo")) or any(token in upper_value for token in ("inf", "infinity", "oo")):
-        hazards.append("Infinite integration bound detected.")
+def _format_expression_text(expression: Any) -> str:
+    return latex(simplify(expression))
+
+
+def _is_infinite_bound(value: Any | None) -> bool:
+    return bool(value is not None and getattr(value, "is_infinite", False))
+
+
+def infer_domain_analysis(expression: Any) -> dict[str, Any]:
+    constraints: list[dict[str, str]] = []
+    assumptions: list[str] = []
+    blockers: list[str] = []
+
+    for log_atom in sorted(expression.atoms(log), key=latex):
+        detail = f"{_format_expression_text(log_atom.args[0])} > 0"
+        constraints.append(
+            {
+                "kind": "log_argument_positive",
+                "label": "Log domain",
+                "detail": detail,
+                "severity": "blocker",
+            }
+        )
+
+    for pow_atom in sorted(expression.atoms(Pow), key=latex):
+        exponent = pow_atom.exp
+        if getattr(exponent, "is_Rational", False) and getattr(exponent, "q", 1) % 2 == 0:
+            base_text = _format_expression_text(pow_atom.base)
+            constraints.append(
+                {
+                    "kind": "even_root_radicand",
+                    "label": "Root domain",
+                    "detail": f"{base_text} >= 0",
+                    "severity": "blocker",
+                }
+            )
+
+    denominator = simplify(denom(expression))
+    if denominator != 1:
+        denominator_text = _format_expression_text(denominator)
+        constraints.append(
+            {
+                "kind": "denominator_nonzero",
+                "label": "Pole avoidance",
+                "detail": f"{denominator_text} != 0",
+                "severity": "blocker",
+            }
+        )
+        try:
+            analysis_symbol = X_SYMBOL if len(expression.free_symbols) == 1 and X_SYMBOL in expression.free_symbols else None
+            roots = solveset(Eq(denominator, 0), analysis_symbol or X_SYMBOL, domain=S.Reals) if analysis_symbol else None
+            if isinstance(roots, FiniteSet) and roots:
+                blockers.extend(sorted(f"x = {_format_expression_text(root)}" for root in roots))
+        except Exception:
+            pass
+
+    if expression.has(Piecewise):
+        assumptions.append("Explicit Piecewise structure detected.")
+    if expression.has(Max) or expression.has(Min):
+        assumptions.append("Comparison-based branches affect the active region.")
+
+    return {
+        "constraints": constraints,
+        "assumptions": assumptions,
+        "blockers": blockers,
+    }
+
+
+def infer_hazard_details(
+    expression: Any,
+    lower_expr: Any | None = None,
+    upper_expr: Any | None = None,
+) -> list[dict[str, str]]:
+    hazards: list[dict[str, str]] = []
+    denominator = simplify(denom(expression))
+    lower_text = _format_expression_text(lower_expr) if lower_expr is not None else ""
+    upper_text = _format_expression_text(upper_expr) if upper_expr is not None else ""
+
+    if _is_infinite_bound(lower_expr) or _is_infinite_bound(upper_expr):
+        hazards.append(
+            {
+                "kind": "infinite_bound",
+                "label": "Infinite bound",
+                "detail": "At least one integration limit is infinite; asymptotic decay controls convergence.",
+                "severity": "warn",
+            }
+        )
+
+    if denominator != 1:
+        try:
+            analysis_symbol = X_SYMBOL if len(expression.free_symbols) == 1 and X_SYMBOL in expression.free_symbols else None
+            roots = solveset(Eq(denominator, 0), analysis_symbol or X_SYMBOL, domain=S.Reals) if analysis_symbol else None
+            if isinstance(roots, FiniteSet):
+                for root in roots:
+                    root_text = _format_expression_text(root)
+                    severity = "info"
+                    detail = f"Potential pole at x = {root_text}."
+                    if lower_text == root_text or upper_text == root_text:
+                        severity = "warn"
+                        detail = f"Endpoint touches pole at x = {root_text}."
+                    hazards.append(
+                        {
+                            "kind": "pole",
+                            "label": "Pole risk",
+                            "detail": detail,
+                            "severity": severity,
+                        }
+                    )
+        except Exception:
+            hazards.append(
+                {
+                    "kind": "pole",
+                    "label": "Pole risk",
+                    "detail": "Denominator may introduce isolated singularities inside the active interval.",
+                    "severity": "warn",
+                }
+            )
+
+    for log_atom in sorted(expression.atoms(log), key=latex):
+        argument_text = _format_expression_text(log_atom.args[0])
+        if lower_text in {"0", "0.0"}:
+            hazards.append(
+                {
+                    "kind": "log_endpoint",
+                    "label": "Log singularity",
+                    "detail": f"Lower endpoint touches a logarithmic boundary for {argument_text}.",
+                    "severity": "warn",
+                }
+            )
+
     return hazards
 
 
-def infer_piecewise_regions(expression_text: str) -> list[dict[str, str]]:
-    normalized = expression_text.replace(" ", "").lower()
+def infer_piecewise_regions(expression: Any) -> dict[str, Any]:
     regions: list[dict[str, str]] = []
-    if "abs(x)" in normalized:
+    source = "none"
+
+    for abs_atom in sorted(expression.atoms(Abs), key=latex):
+        argument = simplify(abs_atom.args[0])
+        source = "abs"
         regions.extend(
             [
-                {"region": "x < 0", "behavior": "abs(x) = -x"},
-                {"region": "x >= 0", "behavior": "abs(x) = x"},
+                {
+                    "kind": "sign_split",
+                    "region": f"{_format_expression_text(argument)} < 0",
+                    "behavior": f"|{_format_expression_text(argument)}| = -({_format_expression_text(argument)})",
+                    "boundary": f"{_format_expression_text(argument)} = 0",
+                },
+                {
+                    "kind": "sign_split",
+                    "region": f"{_format_expression_text(argument)} >= 0",
+                    "behavior": f"|{_format_expression_text(argument)}| = {_format_expression_text(argument)}",
+                    "boundary": f"{_format_expression_text(argument)} = 0",
+                },
             ]
         )
-    if "sign(x)" in normalized:
+
+    for sign_atom in sorted(expression.atoms(sign), key=latex):
+        argument = simplify(sign_atom.args[0])
+        source = "sign"
         regions.extend(
             [
-                {"region": "x < 0", "behavior": "sign(x) = -1"},
-                {"region": "x = 0", "behavior": "sign(x) = 0"},
-                {"region": "x > 0", "behavior": "sign(x) = 1"},
+                {
+                    "kind": "sign_split",
+                    "region": f"{_format_expression_text(argument)} < 0",
+                    "behavior": f"sign({_format_expression_text(argument)}) = -1",
+                    "boundary": f"{_format_expression_text(argument)} = 0",
+                },
+                {
+                    "kind": "sign_split",
+                    "region": f"{_format_expression_text(argument)} = 0",
+                    "behavior": f"sign({_format_expression_text(argument)}) = 0",
+                    "boundary": f"{_format_expression_text(argument)} = 0",
+                },
+                {
+                    "kind": "sign_split",
+                    "region": f"{_format_expression_text(argument)} > 0",
+                    "behavior": f"sign({_format_expression_text(argument)}) = 1",
+                    "boundary": f"{_format_expression_text(argument)} = 0",
+                },
             ]
         )
-    if "piecewise" in normalized:
-        regions.append({"region": "multiple branches", "behavior": "Explicit SymPy Piecewise expression detected."})
-    if "max(" in normalized or "min(" in normalized:
-        regions.append({"region": "comparison split", "behavior": "max/min introduces branch-dependent regions."})
-    return regions
+
+    for piecewise_atom in sorted(expression.atoms(Piecewise), key=latex):
+        source = "piecewise"
+        for branch_expression, condition in piecewise_atom.args:
+            regions.append(
+                {
+                    "kind": "piecewise_branch",
+                    "region": _format_condition_text(condition),
+                    "behavior": _format_expression_text(branch_expression),
+                    "boundary": _format_condition_text(condition),
+                }
+            )
+
+    for max_atom in sorted(expression.atoms(Max), key=latex):
+        source = "max"
+        left, right = max_atom.args[:2]
+        regions.append(
+            {
+                "kind": "comparison_split",
+                "region": f"{_format_expression_text(left)} >= {_format_expression_text(right)}",
+                "behavior": f"max = {_format_expression_text(left)}",
+                "boundary": f"{_format_expression_text(left)} = {_format_expression_text(right)}",
+            }
+        )
+        regions.append(
+            {
+                "kind": "comparison_split",
+                "region": f"{_format_expression_text(left)} < {_format_expression_text(right)}",
+                "behavior": f"max = {_format_expression_text(right)}",
+                "boundary": f"{_format_expression_text(left)} = {_format_expression_text(right)}",
+            }
+        )
+
+    for min_atom in sorted(expression.atoms(Min), key=latex):
+        source = "min"
+        left, right = min_atom.args[:2]
+        regions.append(
+            {
+                "kind": "comparison_split",
+                "region": f"{_format_expression_text(left)} <= {_format_expression_text(right)}",
+                "behavior": f"min = {_format_expression_text(left)}",
+                "boundary": f"{_format_expression_text(left)} = {_format_expression_text(right)}",
+            }
+        )
+        regions.append(
+            {
+                "kind": "comparison_split",
+                "region": f"{_format_expression_text(left)} > {_format_expression_text(right)}",
+                "behavior": f"min = {_format_expression_text(right)}",
+                "boundary": f"{_format_expression_text(left)} = {_format_expression_text(right)}",
+            }
+        )
+
+    deduped_regions: list[dict[str, str]] = []
+    seen_regions: set[tuple[str, str]] = set()
+    for region in regions:
+        key = (region["region"], region["behavior"])
+        if key in seen_regions:
+            continue
+        deduped_regions.append(region)
+        seen_regions.add(key)
+
+    return {
+        "active": bool(deduped_regions),
+        "source": source,
+        "split_count": len(deduped_regions),
+        "regions": deduped_regions,
+    }
 
 
 def build_diagnostics_payload(
     *,
     expression_text: str,
+    expression: Any,
+    lower_expr: Any | None = None,
+    upper_expr: Any | None = None,
     lower_text: str | None = None,
     upper_text: str | None = None,
     convergence: str = "not_applicable",
     convergence_detail: str = "",
+    convergence_reason: str = "standard_finite_interval",
     singularity: str = "none",
 ) -> dict[str, Any]:
-    piecewise_regions = infer_piecewise_regions(expression_text)
+    domain_analysis = infer_domain_analysis(expression)
+    hazard_details = infer_hazard_details(expression, lower_expr, upper_expr)
+    piecewise = infer_piecewise_regions(expression)
     return {
         "convergence": convergence,
         "convergence_detail": convergence_detail,
+        "convergence_reason": convergence_reason,
         "singularity": singularity,
-        "domain_constraints": infer_domain_constraints(expression_text),
-        "hazards": infer_hazards(expression_text, lower_text, upper_text),
-        "piecewise": {
-            "active": bool(piecewise_regions),
-            "regions": piecewise_regions,
-        },
+        "domain_constraints": [item["detail"] for item in domain_analysis["constraints"]],
+        "hazards": [item["detail"] for item in hazard_details],
+        "domain_analysis": domain_analysis,
+        "hazard_details": hazard_details,
+        "piecewise": piecewise,
     }
 
 

@@ -57,10 +57,14 @@ def solve_definite_single_integral(expression: str, lower: str, upper: str) -> I
         "parser": parser_payload,
         "diagnostics": build_diagnostics_payload(
             expression_text=expression,
+            expression=integrand,
+            lower_expr=lower_bound,
+            upper_expr=upper_bound,
             lower_text=lower,
             upper_text=upper,
             convergence="not_applicable",
             convergence_detail="Finite definite integral lane uses standard domain checks.",
+            convergence_reason="finite_interval",
             singularity="possible" if "/" in expression.replace(" ", "") else "none",
         ),
     }

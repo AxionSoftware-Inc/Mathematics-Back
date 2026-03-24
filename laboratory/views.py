@@ -5,8 +5,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .integral_solver import IntegralSolverError, solve_single_integral
+from .differential_solver import DifferentialSolverError, solve_differential
 from .models import LaboratoryModule
-from .serializers import IntegralSolveRequestSerializer, LaboratoryModuleSerializer
+from .serializers import IntegralSolveRequestSerializer, LaboratoryModuleSerializer, DifferentialSolveRequestSerializer
 
 class LaboratoryModuleViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LaboratoryModule.objects.all()
@@ -46,6 +47,37 @@ class IntegralSolveAPIView(APIView):
                 upper=serializer.validated_data["upper"],
             )
         except IntegralSolverError as exc:
+            return Response(
+                {"status": "error", "message": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "status": result.status,
+                "message": result.message,
+                **result.payload,
+            }
+        )
+
+class DifferentialSolveAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = DifferentialSolveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = solve_differential(
+                mode=serializer.validated_data["mode"],
+                expression=serializer.validated_data["expression"],
+                variable=serializer.validated_data["variable"],
+                point=serializer.validated_data.get("point", "1"),
+                order=serializer.validated_data.get("order", "1"),
+                direction=serializer.validated_data.get("direction", ""),
+                coordinates=serializer.validated_data.get("coordinates", "cartesian"),
+            )
+        except DifferentialSolverError as exc:
             return Response(
                 {"status": "error", "message": str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
