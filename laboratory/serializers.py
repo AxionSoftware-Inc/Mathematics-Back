@@ -37,3 +37,10 @@ class DifferentialSolveRequestSerializer(serializers.Serializer):
     order = serializers.CharField(max_length=10, allow_blank=True, required=False, default="1")
     direction = serializers.CharField(max_length=80, allow_blank=True, required=False, default="")
     coordinates = serializers.CharField(max_length=24, allow_blank=True, required=False, default="cartesian")
+
+
+class MatrixSolveRequestSerializer(serializers.Serializer):
+    mode = serializers.CharField(max_length=40)
+    expression = serializers.CharField(max_length=800)
+    rhs = serializers.CharField(max_length=400, allow_blank=True, required=False, default="")
+    dimension = serializers.CharField(max_length=20, allow_blank=True, required=False, default="")

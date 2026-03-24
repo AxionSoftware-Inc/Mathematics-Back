@@ -6,8 +6,9 @@ from rest_framework.views import APIView
 
 from .integral_solver import IntegralSolverError, solve_single_integral
 from .differential_solver import DifferentialSolverError, solve_differential
+from .matrix_solver import MatrixSolverError, solve_matrix
 from .models import LaboratoryModule
-from .serializers import IntegralSolveRequestSerializer, LaboratoryModuleSerializer, DifferentialSolveRequestSerializer
+from .serializers import IntegralSolveRequestSerializer, LaboratoryModuleSerializer, DifferentialSolveRequestSerializer, MatrixSolveRequestSerializer
 
 class LaboratoryModuleViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LaboratoryModule.objects.all()
@@ -78,6 +79,35 @@ class DifferentialSolveAPIView(APIView):
                 coordinates=serializer.validated_data.get("coordinates", "cartesian"),
             )
         except DifferentialSolverError as exc:
+            return Response(
+                {"status": "error", "message": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "status": result.status,
+                "message": result.message,
+                **result.payload,
+            }
+        )
+
+
+class MatrixSolveAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = MatrixSolveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = solve_matrix(
+                mode=serializer.validated_data["mode"],
+                expression=serializer.validated_data["expression"],
+                rhs_expression=serializer.validated_data.get("rhs", ""),
+                dimension=serializer.validated_data.get("dimension", ""),
+            )
+        except MatrixSolverError as exc:
             return Response(
                 {"status": "error", "message": str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,

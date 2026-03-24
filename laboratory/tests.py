@@ -329,3 +329,54 @@ class DifferentialSolveApiTests(APITestCase):
         self.assertEqual(response.data["status"], "exact")
         self.assertEqual(response.data["input"]["lane"], "sde")
         self.assertEqual(response.data["exact"]["method_label"], "Euler-Maruyama")
+
+
+class MatrixSolveApiTests(APITestCase):
+    def test_algebra_lane_returns_determinant(self):
+        url = reverse("laboratory-matrix-solve")
+        response = self.client.post(
+            url,
+            {"mode": "algebra", "expression": "2 1; 1 3", "rhs": "", "dimension": "2x2"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["summary"]["determinant"], "5")
+        self.assertTrue(response.data["summary"]["inverseAvailable"])
+
+    def test_systems_lane_solves_linear_system(self):
+        url = reverse("laboratory-matrix-solve")
+        response = self.client.post(
+            url,
+            {"mode": "systems", "expression": "2 1; 1 3", "rhs": "1; 0", "dimension": "2x2"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["exact"]["method_label"], "Linear System Solve")
+        self.assertIn("x =", response.data["exact"]["result_latex"])
+
+    def test_decomposition_lane_returns_spectrum(self):
+        url = reverse("laboratory-matrix-solve")
+        response = self.client.post(
+            url,
+            {"mode": "decomposition", "expression": "4 1; 1 3", "rhs": "", "dimension": "2x2"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["exact"]["method_label"], "Spectral Decomposition")
+        self.assertEqual(response.data["summary"]["eigenSummary"], "Eigen spectrum extracted")
+
+    def test_transform_lane_maps_probe_vector(self):
+        url = reverse("laboratory-matrix-solve")
+        response = self.client.post(
+            url,
+            {"mode": "transform", "expression": "1 2; 0 1", "rhs": "1; 1", "dimension": "2x2"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["exact"]["method_label"], "Linear Transform")
+        self.assertIn("T(v)", response.data["exact"]["result_latex"])
