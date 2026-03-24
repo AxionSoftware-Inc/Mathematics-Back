@@ -8,6 +8,7 @@ from .integral_lane_common import (
     X_SYMBOL,
     IntegralSolveResult,
     IntegralSolverError,
+    build_diagnostics_payload,
     build_exact_steps,
     build_parser_payload,
     build_unresolved_steps,
@@ -54,6 +55,14 @@ def solve_definite_single_integral(expression: str, lower: str, upper: str) -> I
             "lane": "definite_single",
         },
         "parser": parser_payload,
+        "diagnostics": build_diagnostics_payload(
+            expression_text=expression,
+            lower_text=lower,
+            upper_text=upper,
+            convergence="not_applicable",
+            convergence_detail="Finite definite integral lane uses standard domain checks.",
+            singularity="possible" if "/" in expression.replace(" ", "") else "none",
+        ),
     }
 
     if unresolved_definite:

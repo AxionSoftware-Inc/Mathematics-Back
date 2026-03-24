@@ -7,6 +7,7 @@ from .integral_lane_common import (
     X_SYMBOL,
     IntegralSolveResult,
     IntegralSolverError,
+    build_diagnostics_payload,
     build_indefinite_steps,
     build_parser_payload,
     describe_integration_strategy,
@@ -35,6 +36,12 @@ def solve_indefinite_single_integral(expression: str) -> IntegralSolveResult:
             "lane": "indefinite_single",
         },
         "parser": parser_payload,
+        "diagnostics": build_diagnostics_payload(
+            expression_text=expression,
+            convergence="not_applicable",
+            convergence_detail="Indefinite symbolic lane does not run numerical convergence checks.",
+            singularity="possible" if "/" in expression.replace(" ", "") else "none",
+        ),
     }
 
     if antiderivative.has(Integral):

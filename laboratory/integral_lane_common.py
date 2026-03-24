@@ -23,6 +23,52 @@ class IntegralSolveResult:
     payload: dict[str, Any]
 
 
+def infer_domain_constraints(expression_text: str) -> list[str]:
+    normalized = expression_text.replace(" ", "").lower()
+    constraints: list[str] = []
+    if "log(" in normalized or "ln(" in normalized:
+        constraints.append("Log arguments must stay positive.")
+    if "sqrt(" in normalized:
+        constraints.append("Square-root radicands must stay nonnegative.")
+    if "/" in normalized:
+        constraints.append("Denominators must stay nonzero on the active domain.")
+    return constraints
+
+
+def infer_hazards(expression_text: str, lower_text: str | None = None, upper_text: str | None = None) -> list[str]:
+    normalized = expression_text.replace(" ", "").lower()
+    lower_value = (lower_text or "").strip().lower()
+    upper_value = (upper_text or "").strip().lower()
+    hazards: list[str] = []
+    if "/x" in normalized and (lower_value == "0" or upper_value == "0"):
+        hazards.append("Endpoint pole at x = 0.")
+    if "1/sqrt(x)" in normalized and (lower_value == "0" or upper_value == "0"):
+        hazards.append("Endpoint root singularity at x = 0.")
+    if "log(x)" in normalized and lower_value == "0":
+        hazards.append("Log singularity at x = 0.")
+    if any(token in lower_value for token in ("inf", "infinity", "oo")) or any(token in upper_value for token in ("inf", "infinity", "oo")):
+        hazards.append("Infinite integration bound detected.")
+    return hazards
+
+
+def build_diagnostics_payload(
+    *,
+    expression_text: str,
+    lower_text: str | None = None,
+    upper_text: str | None = None,
+    convergence: str = "not_applicable",
+    convergence_detail: str = "",
+    singularity: str = "none",
+) -> dict[str, Any]:
+    return {
+        "convergence": convergence,
+        "convergence_detail": convergence_detail,
+        "singularity": singularity,
+        "domain_constraints": infer_domain_constraints(expression_text),
+        "hazards": infer_hazards(expression_text, lower_text, upper_text),
+    }
+
+
 def build_parser_payload(
     *,
     integrand_input: ParsedMathInput,

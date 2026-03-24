@@ -8,6 +8,7 @@ from .integral_lane_common import (
     X_SYMBOL,
     IntegralSolveResult,
     IntegralSolverError,
+    build_diagnostics_payload,
     build_exact_steps,
     build_parser_payload,
     build_unresolved_steps,
@@ -42,6 +43,14 @@ def solve_improper_single_integral(expression: str, lower: str, upper: str) -> I
             "lane": "improper_single",
         },
         "parser": parser_payload,
+        "diagnostics": build_diagnostics_payload(
+            expression_text=expression,
+            lower_text=lower,
+            upper_text=upper,
+            convergence="unresolved",
+            convergence_detail="Improper integral requires limit and singularity diagnostics.",
+            singularity="endpoint" if lower.strip() == "0" or upper.strip() == "0" else "possible",
+        ),
     }
 
     if definite_value.has(Integral):
@@ -50,6 +59,11 @@ def solve_improper_single_integral(expression: str, lower: str, upper: str) -> I
             message="Improper integral closed-form ko'rinishda hal bo'lmadi.",
             payload={
                 **base_payload,
+                "diagnostics": {
+                    **base_payload["diagnostics"],
+                    "convergence": "unresolved",
+                    "convergence_detail": "SymPy could not close the improper limit analytically.",
+                },
                 "reason": "sympy_could_not_resolve_improper_integral",
                 "can_offer_numerical": False,
                 "exact": {
@@ -76,6 +90,11 @@ def solve_improper_single_integral(expression: str, lower: str, upper: str) -> I
             message="Improper integral divergent yoki non-finite bo'lib chiqdi.",
             payload={
                 **base_payload,
+                "diagnostics": {
+                    **base_payload["diagnostics"],
+                    "convergence": "divergent",
+                    "convergence_detail": "Improper limit evaluation produced a non-finite result.",
+                },
                 "reason": "improper_integral_diverges",
                 "can_offer_numerical": False,
                 "exact": {
@@ -115,6 +134,11 @@ def solve_improper_single_integral(expression: str, lower: str, upper: str) -> I
         message="Improper integral symbolic limit bilan baholandi.",
         payload={
             **base_payload,
+            "diagnostics": {
+                **base_payload["diagnostics"],
+                "convergence": "convergent",
+                "convergence_detail": "Symbolic limit evaluation resolved to a finite value.",
+            },
             "can_offer_numerical": False,
             "exact": {
                 "method_label": method_meta["label"],
