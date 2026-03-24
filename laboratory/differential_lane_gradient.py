@@ -105,7 +105,8 @@ def solve_gradient_lane(
 
         norm = sp.sqrt(norm_sq)
         unit_direction = [sp.simplify(item / norm) for item in direction_values]
-        unit_direction_latex = rf"\hat{{u}} = \begin{{bmatrix}} {' \\\\ '.join(latex(item) for item in unit_direction)} \end{{bmatrix}}"
+        unit_direction_col = r" \\ ".join(latex(item) for item in unit_direction)
+        unit_direction_latex = rf"\hat{{u}} = \begin{{bmatrix}} {unit_direction_col} \end{{bmatrix}}"
         directional_expr = sp.simplify(sum(partials[i] * unit_direction[i] for i in range(len(sym_vars))))
         directional_latex = rf"D_{{\hat{{u}}}} f = {latex(directional_expr)}"
 
