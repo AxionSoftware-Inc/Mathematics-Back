@@ -419,3 +419,63 @@ class ProbabilitySolveApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], "exact")
         self.assertIn("regressionFit", response.data["summary"])
+
+    def test_bayesian_lane_returns_posterior(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "bayesian", "dataset": "successes=58; trials=100", "parameters": "prior_alpha=2; prior_beta=3", "dimension": "posterior lane"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertIn("posteriorMean", response.data["summary"])
+        self.assertEqual(response.data["exact"]["method_label"], "Beta-Binomial Posterior")
+
+    def test_multivariate_lane_returns_structure(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "multivariate", "dataset": "1,2,3; 2,3,4; 3,4,5; 4,5,6", "parameters": "labels=a,b,c", "dimension": "3-variable"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertIn("correlationSignal", response.data["summary"])
+
+    def test_time_series_lane_returns_forecast(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "time-series", "dataset": "112,118,121,126,133,129,138,144", "parameters": "window=3; horizon=2", "dimension": "1d temporal"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertIn("forecast", response.data["summary"])
+
+    def test_distribution_lane_supports_exponential(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "distributions", "dataset": "x=1.5", "parameters": "family=exponential; lambda=1.2", "dimension": "1d"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["summary"]["distributionFamily"], "exponential")
+
+    def test_regression_lane_supports_quadratic(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "regression", "dataset": "(1,2.4), (2,3.1), (3,4.9), (4,7.8), (5,11.6), (6,16.1)", "parameters": "model=quadratic", "dimension": "2d"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["exact"]["method_label"], "Quadratic Least Squares")
