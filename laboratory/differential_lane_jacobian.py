@@ -125,7 +125,8 @@ def solve_jacobian_lane(
 
     # Build combined latex for expr_input
     combined_expr_latex = ", ".join(latex(f) for f in func_exprs)
-    vector_latex = rf"\mathbf{{F}} = \begin{{bmatrix}} {combined_expr_latex.replace(', ', r' \\ ')} \end{{bmatrix}}"
+    combined_expr_column = r" \\ ".join(latex(f) for f in func_exprs)
+    vector_latex = rf"\mathbf{{F}} = \begin{{bmatrix}} {combined_expr_column} \end{{bmatrix}}"
 
     parser_payload = {
         "expression_raw": expression,

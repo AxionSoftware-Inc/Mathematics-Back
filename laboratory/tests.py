@@ -545,3 +545,65 @@ class ProbabilitySolveApiTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["exact"]["method_label"], "Bootstrap Mean Audit")
+
+
+class SeriesLimitSolveApiTests(APITestCase):
+    def test_limit_lane_returns_exact_limit(self):
+        url = reverse("laboratory-series-limit-solve")
+        response = self.client.post(
+            url,
+            {"mode": "limits", "expression": "sin(x)/x", "auxiliary": "x -> 0", "dimension": "1 variable"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["exact"]["result_latex"], "1")
+
+    def test_sequence_lane_returns_tail_limit(self):
+        url = reverse("laboratory-series-limit-solve")
+        response = self.client.post(
+            url,
+            {"mode": "sequences", "expression": "(1 + 1/n)^n", "auxiliary": "n -> inf", "dimension": "discrete"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["summary"]["detectedFamily"], "sequence")
+
+    def test_series_lane_solves_geometric_sum(self):
+        url = reverse("laboratory-series-limit-solve")
+        response = self.client.post(
+            url,
+            {"mode": "series", "expression": "sum(1/2^n, n=1..inf)", "auxiliary": "", "dimension": "infinite series"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["exact"]["result_latex"], "1")
+
+    def test_power_series_lane_returns_radius_signal(self):
+        url = reverse("laboratory-series-limit-solve")
+        response = self.client.post(
+            url,
+            {"mode": "power-series", "expression": "sum(x^n/n, n=1..inf)", "auxiliary": "center=0", "dimension": "power series"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["summary"]["radiusSignal"], "1")
+
+    def test_convergence_lane_reports_test_taxonomy(self):
+        url = reverse("laboratory-series-limit-solve")
+        response = self.client.post(
+            url,
+            {"mode": "convergence", "expression": "sum(n!/n^n, n=1..inf)", "auxiliary": "ratio test", "dimension": "infinite series"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["summary"]["testFamily"], "ratio test")
+        self.assertEqual(response.data["summary"]["secondaryTestFamily"], "root/comparison cross-check")

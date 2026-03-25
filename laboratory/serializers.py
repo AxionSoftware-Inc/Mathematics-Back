@@ -51,3 +51,10 @@ class ProbabilitySolveRequestSerializer(serializers.Serializer):
     dataset = serializers.CharField(max_length=1200)
     parameters = serializers.CharField(max_length=400, allow_blank=True, required=False, default="")
     dimension = serializers.CharField(max_length=40, allow_blank=True, required=False, default="")
+
+
+class SeriesLimitSolveRequestSerializer(serializers.Serializer):
+    mode = serializers.CharField(max_length=40)
+    expression = serializers.CharField(max_length=1200)
+    auxiliary = serializers.CharField(max_length=200, allow_blank=True, required=False, default="")
+    dimension = serializers.CharField(max_length=40, allow_blank=True, required=False, default="")

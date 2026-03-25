@@ -8,8 +8,9 @@ from .integral_solver import IntegralSolverError, solve_single_integral
 from .differential_solver import DifferentialSolverError, solve_differential
 from .matrix_solver import MatrixSolverError, solve_matrix
 from .probability_solver import ProbabilitySolverError, solve_probability
+from .series_limit_solver import SeriesLimitSolverError, solve_series_limit
 from .models import LaboratoryModule
-from .serializers import IntegralSolveRequestSerializer, LaboratoryModuleSerializer, DifferentialSolveRequestSerializer, MatrixSolveRequestSerializer, ProbabilitySolveRequestSerializer
+from .serializers import IntegralSolveRequestSerializer, LaboratoryModuleSerializer, DifferentialSolveRequestSerializer, MatrixSolveRequestSerializer, ProbabilitySolveRequestSerializer, SeriesLimitSolveRequestSerializer
 
 class LaboratoryModuleViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LaboratoryModule.objects.all()
@@ -138,6 +139,35 @@ class ProbabilitySolveAPIView(APIView):
                 dimension=serializer.validated_data.get("dimension", ""),
             )
         except ProbabilitySolverError as exc:
+            return Response(
+                {"status": "error", "message": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "status": result.status,
+                "message": result.message,
+                **result.payload,
+            }
+        )
+
+
+class SeriesLimitSolveAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = SeriesLimitSolveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = solve_series_limit(
+                mode=serializer.validated_data["mode"],
+                expression=serializer.validated_data["expression"],
+                auxiliary=serializer.validated_data.get("auxiliary", ""),
+                dimension=serializer.validated_data.get("dimension", ""),
+            )
+        except SeriesLimitSolverError as exc:
             return Response(
                 {"status": "error", "message": str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
