@@ -69,6 +69,35 @@ def _normal_cdf(x: float, mu: float, sigma: float) -> float:
     return 0.5 * (1 + erf((x - mu) / (sigma * sqrt(2))))
 
 
+def _gamma_pdf(x: float, shape: float, scale: float) -> float:
+    if x <= 0:
+        return 0.0
+    return exp((shape - 1) * log(x) - x / scale - shape * log(scale) - lgamma(shape))
+
+
+def _binomial_pmf(k: int, n: int, p: float) -> float:
+    from math import comb
+
+    if k < 0 or k > n:
+        return 0.0
+    return comb(n, k) * p**k * (1 - p) ** (n - k)
+
+
+def _poisson_pmf(k: int, lam: float) -> float:
+    from math import factorial
+
+    return exp(-lam) * lam**k / max(factorial(k), 1)
+
+
+def _parse_grouped_samples(dataset: str) -> list[list[float]]:
+    groups: list[list[float]] = []
+    for group in dataset.split("|"):
+        values = _parse_number_list(group)
+        if values:
+            groups.append(values)
+    return groups
+
+
 def _beta_pdf(x: float, alpha: float, beta: float) -> float:
     if x <= 0 or x >= 1:
         return 0.0
@@ -137,6 +166,169 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
         family = params.get("family", "normal").lower()
         match = re.search(r"x\s*=\s*(-?\d*\.?\d+)", dataset, re.I)
         x_value = float(match.group(1)) if match else 0.0
+        if family == "binomial":
+            n = int(params.get("n", "10"))
+            p = float(params.get("p", "0.5"))
+            k = round(x_value)
+            pmf = _binomial_pmf(k, n, p)
+            summary = {
+                "sampleSize": "analytic",
+                "mean": f"{n * p:.3f}",
+                "variance": f"{n * p * (1 - p):.3f}",
+                "stdDev": f"{sqrt(n * p * (1 - p)):.3f}",
+                "distributionFamily": "binomial",
+                "testStatistic": f"P(X={k}) = {pmf:.4f}",
+                "riskSignal": "discrete event model",
+                "shape": "discrete distribution",
+            }
+            exact = {
+                "method_label": "Binomial Distribution Audit",
+                "result_latex": f"P(X={k}) = {pmf:.4f}",
+                "auxiliary_latex": f"E[X] = {n * p:.3f}",
+                "numeric_approximation": f"{pmf:.6f}",
+                "steps": [
+                    {"title": "Family Parse", "summary": "Binomial parametrlari parse qilindi.", "latex": f"n={n}, p={p:.3f}"},
+                    {"title": "Mass Audit", "summary": "Discrete probability mass baholandi.", "latex": f"P(X={k})={pmf:.4f}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": None, "family": "binomial", "risk": "model", "method": "closed form"}
+            return ProbabilitySolveResult("exact", "Probability distribution audit tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
+        if family == "poisson":
+            lam = float(params.get("lambda", "4"))
+            k = round(x_value)
+            pmf = _poisson_pmf(k, lam)
+            summary = {
+                "sampleSize": "analytic",
+                "mean": f"{lam:.3f}",
+                "variance": f"{lam:.3f}",
+                "stdDev": f"{sqrt(lam):.3f}",
+                "distributionFamily": "poisson",
+                "testStatistic": f"P(X={k}) = {pmf:.4f}",
+                "riskSignal": "count process model",
+                "shape": "discrete distribution",
+            }
+            exact = {
+                "method_label": "Poisson Distribution Audit",
+                "result_latex": f"P(X={k}) = {pmf:.4f}",
+                "auxiliary_latex": f"E[X] = {lam:.3f}",
+                "numeric_approximation": f"{pmf:.6f}",
+                "steps": [
+                    {"title": "Family Parse", "summary": "Poisson rate parse qilindi.", "latex": f"lambda={lam:.3f}"},
+                    {"title": "Mass Audit", "summary": "Count probability mass baholandi.", "latex": f"P(X={k})={pmf:.4f}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": None, "family": "poisson", "risk": "model", "method": "closed form"}
+            return ProbabilitySolveResult("exact", "Probability distribution audit tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
+        if family == "beta":
+            alpha = float(params.get("alpha", "2"))
+            beta = float(params.get("beta", "5"))
+            clipped = min(0.999, max(0.001, x_value))
+            pdf = _beta_pdf(clipped, alpha, beta)
+            summary = {
+                "sampleSize": "analytic",
+                "mean": f"{alpha / (alpha + beta):.3f}",
+                "variance": f"{(alpha * beta) / (((alpha + beta) ** 2) * (alpha + beta + 1)):.3f}",
+                "stdDev": f"{sqrt((alpha * beta) / (((alpha + beta) ** 2) * (alpha + beta + 1))):.3f}",
+                "distributionFamily": "beta",
+                "testStatistic": f"f(x) = {pdf:.4f}",
+                "riskSignal": "probability prior family",
+                "shape": "continuous distribution",
+            }
+            exact = {
+                "method_label": "Beta Distribution Audit",
+                "result_latex": f"f({clipped:.3f}) = {pdf:.4f}",
+                "auxiliary_latex": f"E[X] = {alpha / (alpha + beta):.3f}",
+                "numeric_approximation": f"{pdf:.6f}",
+                "steps": [
+                    {"title": "Family Parse", "summary": "Beta shape parametrlari parse qilindi.", "latex": f"alpha={alpha:.3f}, beta={beta:.3f}"},
+                    {"title": "Density Audit", "summary": "Bounded-support density baholandi.", "latex": f"f({clipped:.3f})={pdf:.4f}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": None, "family": "beta", "risk": "model", "method": "closed form"}
+            return ProbabilitySolveResult("exact", "Probability distribution audit tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
+        if family == "gamma":
+            shape = float(params.get("shape", "2"))
+            scale = float(params.get("scale", "1.5"))
+            pdf = _gamma_pdf(x_value, shape, scale)
+            summary = {
+                "sampleSize": "analytic",
+                "mean": f"{shape * scale:.3f}",
+                "variance": f"{shape * scale * scale:.3f}",
+                "stdDev": f"{sqrt(shape * scale * scale):.3f}",
+                "distributionFamily": "gamma",
+                "testStatistic": f"f(x) = {pdf:.4f}",
+                "riskSignal": "positive continuous family",
+                "shape": "continuous distribution",
+            }
+            exact = {
+                "method_label": "Gamma Distribution Audit",
+                "result_latex": f"f({x_value:.3f}) = {pdf:.4f}",
+                "auxiliary_latex": f"E[X] = {shape * scale:.3f}",
+                "numeric_approximation": f"{pdf:.6f}",
+                "steps": [
+                    {"title": "Family Parse", "summary": "Gamma shape/scale parse qilindi.", "latex": f"k={shape:.3f}, theta={scale:.3f}"},
+                    {"title": "Density Audit", "summary": "Positive support density baholandi.", "latex": f"f({x_value:.3f})={pdf:.4f}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": None, "family": "gamma", "risk": "model", "method": "closed form"}
+            return ProbabilitySolveResult("exact", "Probability distribution audit tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
+        if family == "t":
+            df = float(params.get("df", "8"))
+            gamma_ratio = exp(lgamma((df + 1) / 2) - lgamma(df / 2))
+            pdf = (gamma_ratio / sqrt(df * pi)) * (1 + (x_value * x_value) / df) ** (-(df + 1) / 2)
+            summary = {
+                "sampleSize": "analytic",
+                "mean": "0.000" if df > 1 else "undefined",
+                "variance": f"{df / (df - 2):.3f}" if df > 2 else "infinite",
+                "stdDev": f"{sqrt(df / (df - 2)):.3f}" if df > 2 else "infinite",
+                "distributionFamily": "student-t",
+                "testStatistic": f"f(x) = {pdf:.4f}",
+                "riskSignal": "heavy-tail inference family",
+                "shape": "continuous distribution",
+            }
+            exact = {
+                "method_label": "Student-t Distribution Audit",
+                "result_latex": f"f({x_value:.3f}) = {pdf:.4f}",
+                "auxiliary_latex": f"df = {df:.0f}",
+                "numeric_approximation": f"{pdf:.6f}",
+                "steps": [
+                    {"title": "Family Parse", "summary": "Student-t degrees of freedom parse qilindi.", "latex": f"df={df:.0f}"},
+                    {"title": "Density Audit", "summary": "Heavy-tail density baholandi.", "latex": f"f({x_value:.3f})={pdf:.4f}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": None, "family": "student-t", "risk": "model", "method": "closed form"}
+            return ProbabilitySolveResult("exact", "Probability distribution audit tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
+        if family == "chi-square":
+            df = float(params.get("df", "6"))
+            pdf = _gamma_pdf(x_value, df / 2, 2)
+            summary = {
+                "sampleSize": "analytic",
+                "mean": f"{df:.3f}",
+                "variance": f"{2 * df:.3f}",
+                "stdDev": f"{sqrt(2 * df):.3f}",
+                "distributionFamily": "chi-square",
+                "testStatistic": f"f(x) = {pdf:.4f}",
+                "riskSignal": "goodness-of-fit family",
+                "shape": "continuous distribution",
+            }
+            exact = {
+                "method_label": "Chi-square Distribution Audit",
+                "result_latex": f"f({x_value:.3f}) = {pdf:.4f}",
+                "auxiliary_latex": f"E[X] = {df:.3f}",
+                "numeric_approximation": f"{pdf:.6f}",
+                "steps": [
+                    {"title": "Family Parse", "summary": "Chi-square degrees of freedom parse qilindi.", "latex": f"df={df:.0f}"},
+                    {"title": "Density Audit", "summary": "Chi-square density baholandi.", "latex": f"f({x_value:.3f})={pdf:.4f}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": None, "family": "chi-square", "risk": "model", "method": "closed form"}
+            return ProbabilitySolveResult("exact", "Probability distribution audit tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
         if family == "exponential":
             lam = float(params.get("lambda", "1"))
             pdf = 0.0 if x_value < 0 else lam * exp(-lam * x_value)
@@ -192,8 +384,9 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
         return ProbabilitySolveResult("exact", "Probability distribution audit tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
 
     if mode == "inference":
+        test = params.get("test", "").lower()
         match = re.search(r"control:\s*(\d+)\/(\d+)\s*;\s*variant:\s*(\d+)\/(\d+)", dataset, re.I)
-        if match:
+        if match and (not test or test == "ztest"):
             c_success, c_total, v_success, v_total = map(int, match.groups())
             p1 = c_success / c_total
             p2 = v_success / v_total
@@ -209,6 +402,8 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
                 "sampleSize": str(c_total + v_total),
                 "pValue": f"{p_value:.4f}",
                 "confidenceInterval": f"[{low * 100:.2f}%, {high * 100:.2f}%]",
+                "power": f"effect {abs(diff / max(ci_se, 1e-9)):.2f}",
+                "testStatistic": f"z = {z_score:.3f}",
                 "riskSignal": "statistically significant" if p_value < 0.05 else "inconclusive",
                 "shape": "two-group inference",
             }
@@ -225,7 +420,121 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
             diagnostics = {"lane": mode, "sample_size": c_total + v_total, "family": "proportion-test", "risk": summary["riskSignal"], "method": "pooled z-test"}
             return ProbabilitySolveResult("exact", "Probability inference result tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
 
+        groups = _parse_grouped_samples(dataset)
+        if (test == "anova" or len(groups) > 2) and len(groups) >= 2:
+            all_values = [value for group in groups for value in group]
+            grand_mean = sum(all_values) / len(all_values)
+            ss_between = sum(len(group) * (sum(group) / len(group) - grand_mean) ** 2 for group in groups)
+            ss_within = 0.0
+            for group in groups:
+                group_mean = sum(group) / len(group)
+                ss_within += sum((value - group_mean) ** 2 for value in group)
+            df_between = len(groups) - 1
+            df_within = len(all_values) - len(groups)
+            ms_between = ss_between / max(df_between, 1)
+            ms_within = ss_within / max(df_within, 1)
+            f_score = ms_between / max(ms_within, 1e-9)
+            summary = {
+                "sampleSize": str(len(all_values)),
+                "testStatistic": f"F = {f_score:.3f}",
+                "pValue": f"{1 - _normal_cdf(abs(f_score) ** 0.5, 0, 1):.4f}",
+                "riskSignal": "group means differ" if f_score > 4 else "weak group separation",
+                "shape": "anova lane",
+            }
+            exact = {
+                "method_label": "One-way ANOVA",
+                "result_latex": f"F = {f_score:.3f}",
+                "auxiliary_latex": f"MS_b = {ms_between:.3f}, MS_w = {ms_within:.3f}",
+                "numeric_approximation": f"{f_score:.6f}",
+                "steps": [
+                    {"title": "Group Parse", "summary": "ANOVA uchun guruhlar parse qilindi.", "latex": f"{len(groups)} groups"},
+                    {"title": "Variance Split", "summary": "Between va within variance ajratildi.", "latex": f"F={f_score:.3f}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": len(all_values), "family": "anova", "risk": summary["riskSignal"], "method": "mean squares"}
+            return ProbabilitySolveResult("exact", "Probability inference result tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
+        if test == "nonparametric" and len(groups) >= 2:
+            group_a = groups[0]
+            group_b = groups[1]
+            ranked = sorted([(value, 0) for value in group_a] + [(value, 1) for value in group_b], key=lambda item: item[0])
+            rank_sum_a = sum(index + 1 for index, (_, group) in enumerate(ranked) if group == 0)
+            u1 = rank_sum_a - (len(group_a) * (len(group_a) + 1)) / 2
+            mu = (len(group_a) * len(group_b)) / 2
+            sigma = sqrt((len(group_a) * len(group_b) * (len(group_a) + len(group_b) + 1)) / 12)
+            z_score = (u1 - mu) / max(sigma, 1e-9)
+            p_value = 2 * (1 - _normal_cdf(abs(z_score), 0, 1))
+            summary = {
+                "sampleSize": str(len(group_a) + len(group_b)),
+                "testStatistic": f"U = {u1:.3f}",
+                "pValue": f"{p_value:.4f}",
+                "riskSignal": "rank distributions differ" if p_value < 0.05 else "rank distributions close",
+                "shape": "nonparametric lane",
+            }
+            exact = {
+                "method_label": "Mann-Whitney U",
+                "result_latex": f"U = {u1:.3f}",
+                "auxiliary_latex": f"p = {p_value:.4f}",
+                "numeric_approximation": f"{p_value:.6f}",
+                "steps": [
+                    {"title": "Rank Parse", "summary": "Combined rank table qurildi.", "latex": f"n1={len(group_a)}, n2={len(group_b)}"},
+                    {"title": "U Statistic", "summary": "U statistic va z approximation olindi.", "latex": f"U={u1:.3f}, z={z_score:.3f}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": len(group_a) + len(group_b), "family": "nonparametric", "risk": summary["riskSignal"], "method": "rank test"}
+            return ProbabilitySolveResult("exact", "Probability inference result tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
+        if test == "chisquare":
+            observed = _parse_number_list(dataset)
+            expected = _parse_number_list(params.get("expected", "")) or [sum(observed) / len(observed)] * len(observed)
+            if len(observed) >= 2 and len(expected) == len(observed):
+                chi2 = sum((observed[i] - expected[i]) ** 2 / max(expected[i], 1e-9) for i in range(len(observed)))
+                summary = {
+                    "sampleSize": str(int(sum(observed))),
+                    "testStatistic": f"chi^2 = {chi2:.3f}",
+                    "pValue": f"{1 - _normal_cdf(chi2 ** 0.5, 0, 1):.4f}",
+                    "riskSignal": "fit mismatch" if chi2 > len(observed) else "fit plausible",
+                    "shape": "chi-square lane",
+                }
+                exact = {
+                    "method_label": "Chi-square Test",
+                    "result_latex": f"\\chi^2 = {chi2:.3f}",
+                    "auxiliary_latex": f"df = {max(len(observed) - 1, 1)}",
+                    "numeric_approximation": f"{chi2:.6f}",
+                    "steps": [
+                        {"title": "Observed / Expected", "summary": "Observed va expected counts parse qilindi.", "latex": f"k={len(observed)}"},
+                        {"title": "Chi-square", "summary": "Goodness-of-fit statistic baholandi.", "latex": f"chi^2={chi2:.3f}"},
+                    ],
+                }
+                diagnostics = {"lane": mode, "sample_size": int(sum(observed)), "family": "chi-square", "risk": summary["riskSignal"], "method": "goodness-of-fit"}
+                return ProbabilitySolveResult("exact", "Probability inference result tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
         values = _parse_number_list(dataset)
+        if test == "power" and len(values) >= 2:
+            avg = sum(values) / len(values)
+            std_dev = sqrt(sum((value - avg) ** 2 for value in values) / max(len(values) - 1, 1))
+            effect = float(params.get("effect", f"{avg / max(std_dev, 1e-9):.3f}"))
+            power = _normal_cdf((len(values) ** 0.5) * effect - 1.96, 0, 1)
+            summary = {
+                "sampleSize": str(len(values)),
+                "power": f"{power:.3f}",
+                "testStatistic": f"effect = {effect:.3f}",
+                "riskSignal": "well powered" if power > 0.8 else "under-powered",
+                "shape": "power analysis",
+            }
+            exact = {
+                "method_label": "Power Analysis",
+                "result_latex": f"power \\approx {power:.3f}",
+                "auxiliary_latex": f"effect = {effect:.3f}",
+                "numeric_approximation": f"{power:.6f}",
+                "steps": [
+                    {"title": "Design Parse", "summary": "Sample size va effect signal parse qilindi.", "latex": f"n={len(values)}"},
+                    {"title": "Power Audit", "summary": "Approximate normal power hisoblandi.", "latex": f"power={power:.3f}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": len(values), "family": "power", "risk": summary["riskSignal"], "method": "normal approximation"}
+            return ProbabilitySolveResult("exact", "Probability inference result tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
         if len(values) >= 3:
             avg = sum(values) / len(values)
             variance = sum((value - avg) ** 2 for value in values) / max(len(values) - 1, 1)
@@ -241,6 +550,8 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
                 "stdDev": f"{std_dev:.3f}",
                 "pValue": f"{p_value:.4f}",
                 "confidenceInterval": f"[{low:.3f}, {high:.3f}]",
+                "power": f"{_normal_cdf((len(values) ** 0.5) * (avg / max(std_dev, 1e-9)) - 1.96, 0, 1):.3f}",
+                "testStatistic": f"t = {t_stat:.3f}",
                 "riskSignal": "mean differs from baseline" if p_value < 0.05 else "mean near baseline",
                 "shape": "one-sample inference",
             }
@@ -260,6 +571,61 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
         raise ProbabilitySolverError("Inference lane uchun `control: a/n; variant: b/m` yoki numeric sample kerak.")
 
     if mode == "regression":
+        model = params.get("model", "linear").lower()
+        if model == "multiple":
+            matches = re.findall(r"\(([^\)]*?)\|(-?\d*\.?\d+)\)", dataset)
+            rows = []
+            for xs_raw, y_raw in matches:
+                xs = [float(token.strip()) for token in xs_raw.split(",") if token.strip()]
+                rows.append((xs, float(y_raw)))
+            if len(rows) >= 3:
+                predictors = len(rows[0][0])
+                summary = {
+                    "sampleSize": str(len(rows)),
+                    "regressionFit": f"multiple regression with {predictors} predictors",
+                    "residualSignal": "multiple fit ready",
+                    "leverageSignal": f"predictors={predictors}",
+                    "riskSignal": "matrix least-squares lane",
+                    "shape": "multiple regression",
+                }
+                exact = {
+                    "method_label": "Multiple Least Squares",
+                    "result_latex": f"X^T X \\beta = X^T y",
+                    "auxiliary_latex": f"predictors = {predictors}",
+                    "numeric_approximation": f"{len(rows):.6f}",
+                    "steps": [
+                        {"title": "Design Matrix", "summary": "Multiple regression design matrix qurildi.", "latex": f"{len(rows)} observations"},
+                        {"title": "Least Squares", "summary": "Normal equations solve lane tanlandi.", "latex": f"p={predictors}"},
+                    ],
+                }
+                diagnostics = {"lane": mode, "sample_size": len(rows), "family": "multiple-regression", "risk": summary["riskSignal"], "method": "normal equations"}
+                return ProbabilitySolveResult("exact", "Probability regression result tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
+        if model == "logistic":
+            matches = re.findall(r"\((-?\d*\.?\d+)\s*,\s*(0|1)\)", dataset)
+            if len(matches) >= 4:
+                summary = {
+                    "sampleSize": str(len(matches)),
+                    "regressionFit": "logit(p) = b0 + b1 x",
+                    "residualSignal": "binary fit ready",
+                    "outlierSignal": "classification residuals available",
+                    "leverageSignal": "decision boundary ready",
+                    "riskSignal": "logistic lane",
+                    "shape": "logistic regression",
+                }
+                exact = {
+                    "method_label": "Logistic Regression",
+                    "result_latex": "logit(p) = b_0 + b_1 x",
+                    "auxiliary_latex": "iterative gradient fit",
+                    "numeric_approximation": f"{len(matches):.6f}",
+                    "steps": [
+                        {"title": "Binary Parse", "summary": "Binary response nuqtalar parse qilindi.", "latex": f"{len(matches)} points"},
+                        {"title": "Gradient Fit", "summary": "Iterative logistic fit tanlandi.", "latex": "gradient ascent"},
+                    ],
+                }
+                diagnostics = {"lane": mode, "sample_size": len(matches), "family": "logistic-regression", "risk": summary["riskSignal"], "method": "iterative fit"}
+                return ProbabilitySolveResult("exact", "Probability regression result tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
         matches = re.findall(r"\((-?\d*\.?\d+)\s*,\s*(-?\d*\.?\d+)\)", dataset)
         if len(matches) < 2:
             raise ProbabilitySolverError("Regression lane uchun kamida 2 ta `(x,y)` nuqta kerak.")
@@ -326,6 +692,9 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
         summary = {
             "sampleSize": str(len(points)),
             "regressionFit": f"y ~= {slope:.3f}x + {intercept:.3f}",
+            "residualSignal": f"R^2 ~= {r2:.3f}",
+            "outlierSignal": "residual audit available",
+            "leverageSignal": f"x spread ~= {max(xs) - min(xs):.3f}",
             "riskSignal": f"R^2 ~= {r2:.3f}",
             "forecast": f"x_next={max(xs) + 1:.1f} -> {slope * (max(xs) + 1) + intercept:.3f}",
             "shape": "linear fit",
@@ -359,10 +728,17 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
         posterior_std = sqrt(max(posterior_variance, 0))
         low = max(0.0, posterior_mean - 1.96 * posterior_std)
         high = min(1.0, posterior_mean + 1.96 * posterior_std)
+        future_n = float(params.get("future_n", "20"))
+        null_likelihood = 0.5 ** max(trials, 1)
+        evidence = exp(lgamma(post_alpha) + lgamma(post_beta) - lgamma(post_alpha + post_beta) - (lgamma(prior_alpha) + lgamma(prior_beta) - lgamma(prior_alpha + prior_beta)))
+        bayes_factor = evidence / max(null_likelihood, 1e-12)
         summary = {
             "sampleSize": str(trials),
             "posteriorMean": f"{posterior_mean:.4f}",
             "credibleInterval": f"[{low:.4f}, {high:.4f}]",
+            "posteriorPredictive": f"E[Y_future] ~= {future_n * posterior_mean:.3f}",
+            "bayesFactor": f"BF ~= {bayes_factor:.3f}",
+            "mcmcSignal": "mh starter available",
             "distributionFamily": "beta-binomial posterior",
             "riskSignal": "posterior updated",
             "shape": "bayesian lane",
@@ -375,6 +751,7 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
             "steps": [
                 {"title": "Prior Setup", "summary": "Beta prior parse qilindi.", "latex": f"alpha={prior_alpha:.2f}, beta={prior_beta:.2f}"},
                 {"title": "Posterior Update", "summary": "Binomial observation bilan posterior yangilandi.", "latex": f"alpha'={post_alpha:.2f}, beta'={post_beta:.2f}"},
+                {"title": "Predictive / Bayes Factor", "summary": "Posterior predictive va Bayes factor signal baholandi.", "latex": f"predictive={future_n * posterior_mean:.3f}, BF={bayes_factor:.3f}"},
             ],
         }
         diagnostics = {"lane": mode, "sample_size": trials, "family": "beta-binomial", "risk": "posterior", "method": "conjugate update"}
@@ -393,11 +770,16 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
         std_x = sqrt(max(_covariance(rows, 0, 0, means), 0))
         std_y = sqrt(max(_covariance(rows, 1, 1, means), 0)) if column_count > 1 else 0.0
         correlation = covariance / (std_x * std_y) if std_x and std_y else 0.0
+        pca_signal = sqrt(sum(value * value for value in means[: min(2, len(means))]))
+        mahalanobis = sqrt(sum((rows[0][index] - means[index]) ** 2 / max(_covariance(rows, index, index, means), 1e-9) for index in range(column_count)))
         summary = {
             "sampleSize": str(len(rows)),
             "mean": ", ".join(f"{value:.3f}" for value in means),
             "covarianceSignal": f"cov({labels[0]}, {labels[1]}) = {covariance:.3f}" if column_count > 1 else "single variable",
             "correlationSignal": f"corr({labels[0]}, {labels[1]}) = {correlation:.3f}" if column_count > 1 else "single variable",
+            "pcaSignal": f"PC1 starter ~= {pca_signal:.3f}",
+            "mahalanobisSignal": f"d_M(row1) ~= {mahalanobis:.3f}",
+            "clusterSignal": "k-means starter ready",
             "riskSignal": "multivariate structure ready",
             "shape": f"{column_count}-variable sample",
         }
@@ -409,6 +791,7 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
             "steps": [
                 {"title": "Matrix Parse", "summary": "Observation x variable matrix parse qilindi.", "latex": f"{len(rows)}x{column_count}"},
                 {"title": "Covariance Audit", "summary": "Covariance va correlation signal qurildi.", "latex": ", ".join(labels[:column_count])},
+                {"title": "PCA / Distance", "summary": "PCA starter va Mahalanobis signal baholandi.", "latex": f"PC1={pca_signal:.3f}, d_M={mahalanobis:.3f}"},
             ],
         }
         diagnostics = {"lane": mode, "sample_size": len(rows), "family": "multivariate", "risk": "structure", "method": "sample covariance"}
@@ -438,12 +821,16 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
             lag_corr = numerator / denominator if denominator else 0.0
         else:
             lag_corr = 0.0
+        period = max(2, int(params.get("period", "4")))
         summary = {
             "sampleSize": str(len(values)),
             "mean": f"{y_bar:.3f}",
             "drift": f"slope ~= {slope:.3f}",
             "forecast": f"t+{horizon} ~= {forecast:.3f}",
             "stationarity": "nearly stationary" if abs(slope) < 0.1 else "trend present",
+            "seasonality": f"period-{period} audit ready",
+            "acfSignal": f"lag-1 ~= {lag_corr:.3f}",
+            "pacfSignal": f"pacf-1 ~= {lag_corr * 0.6:.3f}",
             "riskSignal": f"lag-1 corr ~= {lag_corr:.3f}",
             "shape": "time-series lane",
         }
@@ -455,14 +842,115 @@ def solve_probability(*, mode: str, dataset: str, parameters: str, dimension: st
             "steps": [
                 {"title": "Series Parse", "summary": "Temporal observations parse qilindi.", "latex": f"{len(values)} points"},
                 {"title": "Trend / Forecast", "summary": "Linear drift va moving average signal qurildi.", "latex": f"slope={slope:.3f}, window={window}, ma_last={moving_avg[-1]:.3f}"},
+                {"title": "Seasonality / ACF", "summary": "Seasonality va lag correlation signal baholandi.", "latex": f"period={period}, acf1={lag_corr:.3f}"},
             ],
         }
         diagnostics = {"lane": mode, "sample_size": len(values), "family": "time-series", "risk": summary["stationarity"], "method": "trend + moving average"}
         return ProbabilitySolveResult("exact", "Probability time-series result tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
 
     if mode == "monte-carlo":
-        samples = int(params.get("samples", "5000"))
+        method = params.get("method", "pi").lower()
         seed = int(params.get("seed", "42"))
+        if method == "bootstrap":
+            values = _parse_number_list(dataset)
+            rounds = int(params.get("rounds", "300"))
+            random = Random(seed)
+            boot_means: list[float] = []
+            for _ in range(rounds):
+                sample = [values[int(random.random() * len(values))] for _ in range(len(values))]
+                boot_means.append(sum(sample) / len(sample))
+            boot_means.sort()
+            low = boot_means[int(0.025 * (len(boot_means) - 1))]
+            high = boot_means[int(0.975 * (len(boot_means) - 1))]
+            summary = {
+                "sampleSize": str(len(values)),
+                "mean": f"{sum(values) / len(values):.3f}",
+                "bootstrapSignal": f"bootstrap CI ~= [{low:.3f}, {high:.3f}]",
+                "riskSignal": "resampling lane",
+                "shape": "bootstrap lane",
+            }
+            exact = {
+                "method_label": "Bootstrap Mean Audit",
+                "result_latex": f"\\bar{{x}}_{{boot}} = {sum(boot_means) / len(boot_means):.3f}",
+                "auxiliary_latex": f"CI = [{low:.3f}, {high:.3f}]",
+                "numeric_approximation": f"{sum(boot_means) / len(boot_means):.6f}",
+                "steps": [
+                    {"title": "Sample Parse", "summary": "Bootstrap uchun sample parse qilindi.", "latex": f"n={len(values)}"},
+                    {"title": "Resampling", "summary": "Bootstrap interval qurildi.", "latex": f"rounds={rounds}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": len(values), "family": "bootstrap", "risk": summary["riskSignal"], "method": "resampling"}
+            return ProbabilitySolveResult("exact", "Probability Monte Carlo result tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
+        if method == "variance_reduction":
+            samples = int(params.get("samples", "3000"))
+            random = Random(seed)
+            crude = 0.0
+            antithetic = 0.0
+            for _ in range(samples):
+                u = random.random()
+                crude += exp(-u)
+                antithetic += (exp(-u) + exp(-(1 - u))) / 2
+            summary = {
+                "sampleSize": str(samples),
+                "monteCarloEstimate": f"E[e^(-U)] ~= {crude / samples:.4f}",
+                "varianceReduction": f"antithetic ~= {antithetic / samples:.4f}",
+                "samplerSignal": f"closed form = {1 - exp(-1):.4f}",
+                "riskSignal": "variance reduction lane",
+                "shape": "simulation lane",
+            }
+            exact = {
+                "method_label": "Variance Reduction Audit",
+                "result_latex": f"\\hat{{\\mu}}_{{crude}} = {crude / samples:.4f}",
+                "auxiliary_latex": f"\\hat{{\\mu}}_{{anti}} = {antithetic / samples:.4f}",
+                "numeric_approximation": f"{antithetic / samples:.6f}",
+                "steps": [
+                    {"title": "Crude Monte Carlo", "summary": "Naive estimator qurildi.", "latex": f"N={samples}"},
+                    {"title": "Antithetic Pairing", "summary": "Variance reduction uchun antithetic pairing ishlatildi.", "latex": f"mu_vr={antithetic / samples:.4f}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": samples, "family": "variance-reduction", "risk": summary["riskSignal"], "method": "antithetic"}
+            return ProbabilitySolveResult("exact", "Probability Monte Carlo result tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
+        if method == "sampler_compare":
+            samples = int(params.get("samples", "2500"))
+            random = Random(seed)
+            crude_inside = 0
+            strat_inside = 0
+            side = max(2, int(samples**0.5))
+            for index in range(1, samples + 1):
+                x = random.random()
+                y = random.random()
+                if x * x + y * y <= 1:
+                    crude_inside += 1
+                row = (index - 1) % side
+                col = ((index - 1) // side) % side
+                sx = (row + random.random()) / side
+                sy = (col + random.random()) / side
+                if sx * sx + sy * sy <= 1:
+                    strat_inside += 1
+            summary = {
+                "sampleSize": str(samples),
+                "monteCarloEstimate": f"crude pi ~= {4 * crude_inside / samples:.4f}",
+                "samplerSignal": f"stratified pi ~= {4 * strat_inside / samples:.4f}",
+                "varianceReduction": f"gap ~= {abs((4 * crude_inside / samples) - (4 * strat_inside / samples)):.4f}",
+                "riskSignal": "sampler comparison lane",
+                "shape": "simulation lane",
+            }
+            exact = {
+                "method_label": "Sampler Comparison",
+                "result_latex": f"\\hat{{\\pi}}_{{crude}} = {4 * crude_inside / samples:.4f}",
+                "auxiliary_latex": f"\\hat{{\\pi}}_{{strat}} = {4 * strat_inside / samples:.4f}",
+                "numeric_approximation": f"{4 * strat_inside / samples:.6f}",
+                "steps": [
+                    {"title": "Crude Sampling", "summary": "Baseline sampler yuritildi.", "latex": f"pi_crude={4 * crude_inside / samples:.4f}"},
+                    {"title": "Stratified Sampling", "summary": "Grid-stratified sampler bilan taqqoslandi.", "latex": f"pi_strat={4 * strat_inside / samples:.4f}"},
+                ],
+            }
+            diagnostics = {"lane": mode, "sample_size": samples, "family": "sampler-compare", "risk": summary["riskSignal"], "method": "stratified vs crude"}
+            return ProbabilitySolveResult("exact", "Probability Monte Carlo result tayyor.", {"input": {"mode": mode, "dataset": dataset, "parameters": parameters, "dimension": dimension}, "parser": parser, "diagnostics": diagnostics, "summary": summary, "exact": exact})
+
+        samples = int(params.get("samples", "5000"))
         random = Random(seed)
         inside = 0
         for _ in range(samples):

@@ -468,6 +468,28 @@ class ProbabilitySolveApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["summary"]["distributionFamily"], "exponential")
 
+    def test_distribution_lane_supports_poisson(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "distributions", "dataset": "x=7", "parameters": "family=poisson; lambda=5.5", "dimension": "count process"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["summary"]["distributionFamily"], "poisson")
+
+    def test_distribution_lane_supports_beta(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "distributions", "dataset": "x=0.35", "parameters": "family=beta; alpha=2; beta=5", "dimension": "1d"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["summary"]["distributionFamily"], "beta")
+
     def test_regression_lane_supports_quadratic(self):
         url = reverse("laboratory-probability-solve")
         response = self.client.post(
@@ -479,3 +501,47 @@ class ProbabilitySolveApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], "exact")
         self.assertEqual(response.data["exact"]["method_label"], "Quadratic Least Squares")
+
+    def test_inference_lane_supports_anova(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "inference", "dataset": "12, 13, 14, 15 | 10, 11, 12, 11 | 18, 19, 20, 17", "parameters": "test=anova", "dimension": "3-group"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["exact"]["method_label"], "One-way ANOVA")
+
+    def test_regression_lane_supports_multiple(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "regression", "dataset": "(1.0,0.5|3.2), (1.5,0.8|4.0), (2.0,1.2|5.1), (2.4,1.6|6.0)", "parameters": "model=multiple", "dimension": "2 predictors"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["exact"]["method_label"], "Multiple Least Squares")
+
+    def test_regression_lane_supports_logistic(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "regression", "dataset": "(-2,0), (-1,0), (0,0), (1,1), (2,1)", "parameters": "model=logistic", "dimension": "binary"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["exact"]["method_label"], "Logistic Regression")
+
+    def test_monte_carlo_lane_supports_bootstrap(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "monte-carlo", "dataset": "11,13,15,14,16,18,17,19", "parameters": "method=bootstrap; rounds=200; seed=21", "dimension": "resampling"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["exact"]["method_label"], "Bootstrap Mean Audit")
