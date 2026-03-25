@@ -44,3 +44,10 @@ class MatrixSolveRequestSerializer(serializers.Serializer):
     expression = serializers.CharField(max_length=800)
     rhs = serializers.CharField(max_length=400, allow_blank=True, required=False, default="")
     dimension = serializers.CharField(max_length=20, allow_blank=True, required=False, default="")
+
+
+class ProbabilitySolveRequestSerializer(serializers.Serializer):
+    mode = serializers.CharField(max_length=40)
+    dataset = serializers.CharField(max_length=1200)
+    parameters = serializers.CharField(max_length=400, allow_blank=True, required=False, default="")
+    dimension = serializers.CharField(max_length=40, allow_blank=True, required=False, default="")

@@ -380,3 +380,42 @@ class MatrixSolveApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["exact"]["method_label"], "Linear Transform")
         self.assertIn("T(v)", response.data["exact"]["result_latex"])
+
+
+class ProbabilitySolveApiTests(APITestCase):
+    def test_descriptive_lane_returns_moments(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "descriptive", "dataset": "1,2,3,4,5", "parameters": "bins=4", "dimension": "1d"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertEqual(response.data["summary"]["sampleSize"], "5")
+        self.assertEqual(response.data["exact"]["method_label"], "Descriptive Statistics")
+
+    def test_inference_lane_returns_p_value(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "inference", "dataset": "control: 42/210; variant: 57/205", "parameters": "alpha=0.05", "dimension": "2-group"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertIn("pValue", response.data["summary"])
+
+    def test_regression_lane_returns_fit(self):
+        url = reverse("laboratory-probability-solve")
+        response = self.client.post(
+            url,
+            {"mode": "regression", "dataset": "(1,2.1), (2,2.9), (3,4.2), (4,5.1), (5,6.2)", "parameters": "model=linear", "dimension": "2d"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "exact")
+        self.assertIn("regressionFit", response.data["summary"])

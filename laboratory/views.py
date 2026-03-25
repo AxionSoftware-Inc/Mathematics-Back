@@ -7,8 +7,9 @@ from rest_framework.views import APIView
 from .integral_solver import IntegralSolverError, solve_single_integral
 from .differential_solver import DifferentialSolverError, solve_differential
 from .matrix_solver import MatrixSolverError, solve_matrix
+from .probability_solver import ProbabilitySolverError, solve_probability
 from .models import LaboratoryModule
-from .serializers import IntegralSolveRequestSerializer, LaboratoryModuleSerializer, DifferentialSolveRequestSerializer, MatrixSolveRequestSerializer
+from .serializers import IntegralSolveRequestSerializer, LaboratoryModuleSerializer, DifferentialSolveRequestSerializer, MatrixSolveRequestSerializer, ProbabilitySolveRequestSerializer
 
 class LaboratoryModuleViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LaboratoryModule.objects.all()
@@ -108,6 +109,35 @@ class MatrixSolveAPIView(APIView):
                 dimension=serializer.validated_data.get("dimension", ""),
             )
         except MatrixSolverError as exc:
+            return Response(
+                {"status": "error", "message": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "status": result.status,
+                "message": result.message,
+                **result.payload,
+            }
+        )
+
+
+class ProbabilitySolveAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = ProbabilitySolveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = solve_probability(
+                mode=serializer.validated_data["mode"],
+                dataset=serializer.validated_data["dataset"],
+                parameters=serializer.validated_data.get("parameters", ""),
+                dimension=serializer.validated_data.get("dimension", ""),
+            )
+        except ProbabilitySolverError as exc:
             return Response(
                 {"status": "error", "message": str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
