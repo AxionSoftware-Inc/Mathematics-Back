@@ -172,3 +172,24 @@ class ScientificPaperSection(models.Model):
         if self.paper_id:
             return f"{base}-{self.paper_id}-{self.order}"[:255]
         return f"{base}-{self.order}"[:255]
+
+
+class PaperLaboratoryUsage(models.Model):
+    paper = models.ForeignKey(ScientificPaper, on_delete=models.CASCADE, related_name="laboratory_usages")
+    saved_result = models.ForeignKey("laboratory.SavedLaboratoryResult", on_delete=models.CASCADE, related_name="paper_usages")
+    block_id = models.CharField(max_length=120)
+    module_slug = models.SlugField(max_length=64)
+    section_path = models.CharField(max_length=500, blank=True, default="")
+    imported_revision = models.PositiveIntegerField(default=1)
+    synced_revision = models.PositiveIntegerField(default=1)
+    linked_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-linked_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["paper", "block_id"], name="unique_paper_lab_block_usage"),
+        ]
+
+    def __str__(self):
+        return f"paper={self.paper_id} block={self.block_id} result={self.saved_result_id}"

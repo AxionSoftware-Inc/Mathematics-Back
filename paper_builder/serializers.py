@@ -3,6 +3,7 @@ from django.utils.text import slugify
 from rest_framework import serializers
 
 from .models import ScientificPaper, ScientificPaperSection
+from .live_bridge import extract_lab_result_targets
 
 
 class ScientificPaperSectionSerializer(serializers.ModelSerializer):
@@ -27,6 +28,7 @@ class ScientificPaperSectionSerializer(serializers.ModelSerializer):
 class ScientificPaperSerializer(serializers.ModelSerializer):
     sections = ScientificPaperSectionSerializer(many=True, required=False)
     section_count = serializers.IntegerField(read_only=True)
+    laboratory_usage_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = ScientificPaper
@@ -48,8 +50,9 @@ class ScientificPaperSerializer(serializers.ModelSerializer):
             "status",
             "sections",
             "section_count",
+            "laboratory_usage_count",
         )
-        read_only_fields = ("slug", "article", "published_at", "created_at", "updated_at", "section_count")
+        read_only_fields = ("slug", "article", "published_at", "created_at", "updated_at", "section_count", "laboratory_usage_count")
 
     def validate(self, attrs):
         instance = getattr(self, "instance", None)
@@ -68,6 +71,10 @@ class ScientificPaperSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"title": "Published paper uchun sarlavha majburiy."})
             if not (content or "").strip():
                 raise serializers.ValidationError({"content": "Published paper uchun matn majburiy."})
+        if len((title or "").strip()) > 500:
+            raise serializers.ValidationError({"title": "Title is too long."})
+        if len((content or "").strip()) > 400000:
+            raise serializers.ValidationError({"content": "Paper content is too large."})
 
         return attrs
 
@@ -76,6 +83,7 @@ class ScientificPaperSerializer(serializers.ModelSerializer):
         sections_data = validated_data.pop("sections", None)
         paper = ScientificPaper.objects.create(**validated_data)
         self._upsert_sections(paper, sections_data)
+        self._sync_laboratory_usages(paper)
         return paper
 
     @transaction.atomic
@@ -87,6 +95,7 @@ class ScientificPaperSerializer(serializers.ModelSerializer):
 
         instance.save()
         self._upsert_sections(instance, sections_data)
+        self._sync_laboratory_usages(instance)
         return instance
 
     def _compile_sections(self, sections_data: list[dict]) -> str:
@@ -174,3 +183,36 @@ class ScientificPaperSerializer(serializers.ModelSerializer):
         paper.sections.exclude(id__in=seen_ids).delete()
         paper.content = paper.build_compiled_content()
         paper.save(update_fields=["content", "updated_at"])
+
+    def _sync_laboratory_usages(self, paper: ScientificPaper):
+        from laboratory.models import SavedLaboratoryResult
+        from .models import PaperLaboratoryUsage
+
+        seen_block_ids: set[str] = set()
+        for target in extract_lab_result_targets(paper.content or ""):
+            saved_result_id = target.get("savedResultId")
+            block_id = target.get("id")
+            if not saved_result_id or not block_id:
+                continue
+
+            try:
+                saved_result = SavedLaboratoryResult.objects.get(public_id=saved_result_id)
+            except SavedLaboratoryResult.DoesNotExist:
+                continue
+
+            seen_block_ids.add(block_id)
+            imported_revision = target.get("savedResultRevision") or saved_result.revision or 1
+            synced_revision = ((target.get("revision") or imported_revision) if isinstance(target.get("revision"), int) else imported_revision)
+            PaperLaboratoryUsage.objects.update_or_create(
+                paper=paper,
+                block_id=block_id,
+                defaults={
+                    "saved_result": saved_result,
+                    "module_slug": target.get("moduleSlug") or saved_result.module_slug,
+                    "section_path": target.get("sectionPath") or "",
+                    "imported_revision": imported_revision,
+                    "synced_revision": synced_revision,
+                },
+            )
+
+        paper.laboratory_usages.exclude(block_id__in=seen_block_ids).delete()

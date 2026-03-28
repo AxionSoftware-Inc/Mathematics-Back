@@ -1,8 +1,11 @@
+import json
+
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from application.models import Article
-from paper_builder.models import ScientificPaper
+from laboratory.models import SavedLaboratoryResult
+from paper_builder.models import PaperLaboratoryUsage, ScientificPaper
 
 
 class ScientificPaperApiTests(APITestCase):
@@ -140,3 +143,112 @@ class PublicArticleSyncTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(any(item["id"] == paper.article_id for item in response.data))
+
+
+class LaboratoryUsageTests(APITestCase):
+    def setUp(self):
+        self.saved_result = SavedLaboratoryResult.objects.create(
+            module_slug="integral-studio",
+            module_title="Integral Studio",
+            mode="single",
+            title="Integral packet",
+            summary="Saved exact result",
+            report_markdown="# Integral\n\n- result",
+            input_snapshot={"expression": "x^2"},
+            structured_payload={"id": "seed", "moduleSlug": "integral-studio", "kind": "single", "title": "Integral packet"},
+            metadata={},
+        )
+
+    def test_paper_create_registers_laboratory_usage(self):
+        block = {
+            "id": "lab-block-1",
+            "status": "ready",
+            "moduleSlug": "integral-studio",
+            "kind": "single",
+            "title": "Integral result",
+            "summary": "Exact symbolic result",
+            "generatedAt": "2026-03-28T10:00:00Z",
+            "savedResultId": str(self.saved_result.public_id),
+            "savedResultRevision": 1,
+            "metrics": [],
+        }
+        response = self.client.post(
+            "/api/builder/papers/",
+            {
+                "title": "Usage registry draft",
+                "sections": [
+                    {
+                        "title": "Findings",
+                        "kind": "section",
+                        "progress_state": "drafting",
+                        "order": 1,
+                        "content": f"## Findings\n\n```lab-result\n{json.dumps(block, indent=2)}\n```",
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        paper = ScientificPaper.objects.get(pk=response.data["id"])
+        usage = PaperLaboratoryUsage.objects.get(paper=paper, block_id="lab-block-1")
+        self.assertEqual(usage.saved_result, self.saved_result)
+        self.assertEqual(usage.module_slug, "integral-studio")
+
+    def test_live_targets_and_live_sync_are_server_backed(self):
+        paper = ScientificPaper.objects.create(
+            title="Server-backed writer",
+            content=(
+                "## Results\n\n"
+                "```lab-result\n"
+                "{\n"
+                '  "id": "live-block-1",\n'
+                '  "status": "ready",\n'
+                '  "moduleSlug": "integral-studio",\n'
+                '  "kind": "single",\n'
+                '  "title": "Integral result",\n'
+                '  "summary": "Initial",\n'
+                '  "generatedAt": "2026-03-28T10:00:00Z",\n'
+                f'  "savedResultId": "{self.saved_result.public_id}",\n'
+                '  "savedResultRevision": 1,\n'
+                '  "metrics": []\n'
+                "}\n"
+                "```\n"
+            ),
+        )
+
+        targets_response = self.client.get("/api/builder/papers/live-targets/")
+        self.assertEqual(targets_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(any(item["paperId"] == paper.id and item["id"] == "live-block-1" for item in targets_response.data))
+
+        sync_response = self.client.post(
+            f"/api/builder/papers/{paper.id}/live-sync/",
+            {
+                "block_id": "live-block-1",
+                "saved_result_id": str(self.saved_result.public_id),
+                "block": {
+                    "id": "live-block-1",
+                    "status": "ready",
+                    "moduleSlug": "integral-studio",
+                    "kind": "single",
+                    "title": "Integral result",
+                    "summary": "Updated from laboratory",
+                    "generatedAt": "2026-03-28T10:05:00Z",
+                    "savedResultId": str(self.saved_result.public_id),
+                    "savedResultRevision": 1,
+                    "metrics": [],
+                    "sync": {
+                        "revision": 2,
+                        "pushedAt": "2026-03-28T10:05:00Z",
+                        "sourceLabel": "Integral Studio",
+                    },
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(sync_response.status_code, status.HTTP_200_OK)
+        paper.refresh_from_db()
+        self.assertIn("Updated from laboratory", paper.content)
+        usage = PaperLaboratoryUsage.objects.get(paper=paper, block_id="live-block-1")
+        self.assertEqual(usage.synced_revision, 2)

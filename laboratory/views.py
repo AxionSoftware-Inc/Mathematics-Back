@@ -1,7 +1,10 @@
+import logging
+
 from django.shortcuts import get_object_or_404
 from rest_framework import filters, status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from .integral_solver import IntegralSolverError, solve_single_integral
@@ -19,6 +22,9 @@ from .serializers import (
     SavedLaboratoryResultSerializer,
     SeriesLimitSolveRequestSerializer,
 )
+
+
+logger = logging.getLogger(__name__)
 
 class LaboratoryModuleViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LaboratoryModule.objects.all()
@@ -53,6 +59,9 @@ class SavedLaboratoryResultViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["title", "summary", "module_slug", "module_title", "mode"]
     ordering_fields = ["created_at", "updated_at", "title"]
+    ordering = ["-updated_at"]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "laboratory_results"
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -62,7 +71,22 @@ class SavedLaboratoryResultViewSet(viewsets.ModelViewSet):
         mode = self.request.query_params.get("mode")
         if mode:
             queryset = queryset.filter(mode=mode)
+        query = (self.request.query_params.get("q") or "").strip()
+        if query:
+            queryset = queryset.filter(title__icontains=query)
         return queryset
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        logger.info(
+            "laboratory_result_created",
+            extra={
+                "result_id": str(instance.public_id),
+                "module_slug": instance.module_slug,
+                "mode": instance.mode,
+                "revision": instance.revision,
+            },
+        )
 
 
 class IntegralSolveAPIView(APIView):

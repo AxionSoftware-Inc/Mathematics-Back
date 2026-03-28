@@ -48,10 +48,23 @@ class SavedLaboratoryResultSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "revision", "created_at", "updated_at"]
 
     def validate(self, attrs):
-        if not attrs.get("structured_payload"):
+        structured_payload = attrs.get("structured_payload")
+        metadata = attrs.get("metadata") or {}
+        input_snapshot = attrs.get("input_snapshot") or {}
+        report_markdown = attrs.get("report_markdown", "")
+
+        if not structured_payload:
             raise serializers.ValidationError({"structured_payload": "Structured payload is required."})
-        if not attrs.get("report_markdown", "").strip():
+        if not report_markdown.strip():
             raise serializers.ValidationError({"report_markdown": "Report markdown is required."})
+        if len(report_markdown) > 120000:
+            raise serializers.ValidationError({"report_markdown": "Report markdown is too large."})
+        if len(str(input_snapshot)) > 50000:
+            raise serializers.ValidationError({"input_snapshot": "Input snapshot is too large."})
+        if len(str(structured_payload)) > 180000:
+            raise serializers.ValidationError({"structured_payload": "Structured payload is too large."})
+        if len(str(metadata)) > 30000:
+            raise serializers.ValidationError({"metadata": "Metadata is too large."})
         return attrs
 
 

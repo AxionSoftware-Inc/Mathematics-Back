@@ -108,6 +108,16 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '120/min',
+        'laboratory_results': '40/min',
+        'paper_live_targets': '60/min',
+        'paper_live_sync': '30/min',
+    },
 }
 
 from datetime import timedelta
