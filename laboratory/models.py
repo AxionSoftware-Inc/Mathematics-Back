@@ -1,3 +1,5 @@
+import uuid
+
 from django.db import models
 
 class LaboratoryModule(models.Model):
@@ -40,3 +42,25 @@ class LaboratoryModule(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class SavedLaboratoryResult(models.Model):
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    module_slug = models.SlugField(max_length=64, db_index=True)
+    module_title = models.CharField(max_length=120)
+    mode = models.CharField(max_length=64, blank=True, default="")
+    title = models.CharField(max_length=180)
+    summary = models.CharField(max_length=255, blank=True, default="")
+    report_markdown = models.TextField()
+    input_snapshot = models.JSONField(default=dict, blank=True)
+    structured_payload = models.JSONField(default=dict, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    revision = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-created_at"]
+
+    def __str__(self):
+        return f"{self.module_slug}: {self.title}"

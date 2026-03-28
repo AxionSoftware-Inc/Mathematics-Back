@@ -1,10 +1,19 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import IntegralSolveAPIView, DifferentialSolveAPIView, MatrixSolveAPIView, ProbabilitySolveAPIView, SeriesLimitSolveAPIView, LaboratoryModuleViewSet
+from .views import (
+    DifferentialSolveAPIView,
+    IntegralSolveAPIView,
+    LaboratoryModuleViewSet,
+    MatrixSolveAPIView,
+    ProbabilitySolveAPIView,
+    SavedLaboratoryResultViewSet,
+    SeriesLimitSolveAPIView,
+)
 
 router = DefaultRouter()
 router.register(r"modules", LaboratoryModuleViewSet, basename="laboratory-module")
+router.register(r"results", SavedLaboratoryResultViewSet, basename="laboratory-result")
 
 urlpatterns = [
     path("solve/integral/", IntegralSolveAPIView.as_view(), name="laboratory-integral-solve"),

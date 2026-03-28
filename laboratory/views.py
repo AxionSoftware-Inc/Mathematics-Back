@@ -1,5 +1,5 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import status, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,8 +9,16 @@ from .differential_solver import DifferentialSolverError, solve_differential
 from .matrix_solver import MatrixSolverError, solve_matrix
 from .probability_solver import ProbabilitySolverError, solve_probability
 from .series_limit_solver import SeriesLimitSolverError, solve_series_limit
-from .models import LaboratoryModule
-from .serializers import IntegralSolveRequestSerializer, LaboratoryModuleSerializer, DifferentialSolveRequestSerializer, MatrixSolveRequestSerializer, ProbabilitySolveRequestSerializer, SeriesLimitSolveRequestSerializer
+from .models import LaboratoryModule, SavedLaboratoryResult
+from .serializers import (
+    DifferentialSolveRequestSerializer,
+    IntegralSolveRequestSerializer,
+    LaboratoryModuleSerializer,
+    MatrixSolveRequestSerializer,
+    ProbabilitySolveRequestSerializer,
+    SavedLaboratoryResultSerializer,
+    SeriesLimitSolveRequestSerializer,
+)
 
 class LaboratoryModuleViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LaboratoryModule.objects.all()
@@ -34,6 +42,27 @@ class LaboratoryModuleViewSet(viewsets.ReadOnlyModelViewSet):
                 return obj
 
         return get_object_or_404(queryset, slug=value)
+
+
+class SavedLaboratoryResultViewSet(viewsets.ModelViewSet):
+    queryset = SavedLaboratoryResult.objects.all()
+    serializer_class = SavedLaboratoryResultSerializer
+    permission_classes = [AllowAny]
+    http_method_names = ["get", "post", "head", "options"]
+    lookup_field = "public_id"
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["title", "summary", "module_slug", "module_title", "mode"]
+    ordering_fields = ["created_at", "updated_at", "title"]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        module_slug = self.request.query_params.get("module_slug")
+        if module_slug:
+            queryset = queryset.filter(module_slug=module_slug)
+        mode = self.request.query_params.get("mode")
+        if mode:
+            queryset = queryset.filter(mode=mode)
+        return queryset
 
 
 class IntegralSolveAPIView(APIView):

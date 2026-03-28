@@ -2,7 +2,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import LaboratoryModule
+from .models import LaboratoryModule, SavedLaboratoryResult
 
 
 class LaboratoryModuleApiTests(APITestCase):
@@ -559,6 +559,25 @@ class SeriesLimitSolveApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], "exact")
         self.assertEqual(response.data["exact"]["result_latex"], "1")
+        self.assertEqual(response.data["summary"]["detectedFamily"], "removable singularity")
+        self.assertEqual(response.data["exact"]["method_label"], "Removable singularity lane")
+        self.assertIsNotNone(response.data["summary"]["errorBoundSignal"])
+        self.assertTrue(response.data["preview"]["secondaryLineSeries"])
+        self.assertTrue(response.data["preview"]["tertiaryLineSeries"])
+        one_sided_step = next(step for step in response.data["exact"]["steps"] if step["title"] == "One-sided diagnostics")
+        self.assertIn("left =", one_sided_step["summary"])
+
+    def test_limit_lane_detects_infinite_point_branch(self):
+        url = reverse("laboratory-series-limit-solve")
+        response = self.client.post(
+            url,
+            {"mode": "limits", "expression": "(3*x^2+1)/(x^2-4*x)", "auxiliary": "x -> inf", "dimension": "asymptotic"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["summary"]["detectedFamily"], "infinite-point limit")
+        self.assertEqual(response.data["exact"]["method_label"], "Asymptotic infinity lane")
 
     def test_sequence_lane_returns_tail_limit(self):
         url = reverse("laboratory-series-limit-solve")
@@ -571,6 +590,11 @@ class SeriesLimitSolveApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], "exact")
         self.assertEqual(response.data["summary"]["detectedFamily"], "sequence")
+        self.assertTrue(response.data["preview"]["lineSeries"])
+        self.assertTrue(
+            "forward difference" in response.data["summary"]["proofSignal"]
+            or "tail ratio" in response.data["summary"]["proofSignal"]
+        )
 
     def test_series_lane_solves_geometric_sum(self):
         url = reverse("laboratory-series-limit-solve")
@@ -583,6 +607,37 @@ class SeriesLimitSolveApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], "exact")
         self.assertEqual(response.data["exact"]["result_latex"], "1")
+        self.assertEqual(response.data["summary"]["detectedFamily"], "geometric-like series")
+
+    def test_series_lane_accepts_tuple_sum_syntax_and_singularity_scan(self):
+        url = reverse("laboratory-series-limit-solve")
+        response = self.client.post(
+            url,
+            {"mode": "series", "expression": "sum(1/(n*log(n)^2), (n, 2, inf))", "auxiliary": "integral test", "dimension": "infinite series"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["summary"]["detectedFamily"], "log-corrected series")
+        self.assertIn("log", response.data["summary"]["endpointSignal"])
+        family_step = next(step for step in response.data["exact"]["steps"] if step["title"] == "Family classification")
+        self.assertEqual(family_step["latex"], "log-corrected series")
+
+    def test_oscillatory_series_uses_dirichlet_screen(self):
+        url = reverse("laboratory-series-limit-solve")
+        response = self.client.post(
+            url,
+            {"mode": "convergence", "expression": "sum(sin(n)/sqrt(n), n=1..inf)", "auxiliary": "Dirichlet test", "dimension": "oscillatory"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["summary"]["detectedFamily"], "oscillatory trigonometric series")
+        self.assertIn("Dirichlet", response.data["summary"]["proofSignal"])
+        self.assertTrue(response.data["preview"]["tertiaryLineSeries"])
+        self.assertEqual(response.data["summary"]["specialFamilySignal"], "Dirichlet/Abel candidate")
+        self.assertIsNotNone(response.data["summary"]["errorBoundSignal"])
+        self.assertEqual(response.data["exact"]["method_label"], "Dirichlet / Abel research lane")
 
     def test_power_series_lane_returns_radius_signal(self):
         url = reverse("laboratory-series-limit-solve")
@@ -595,6 +650,8 @@ class SeriesLimitSolveApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], "exact")
         self.assertEqual(response.data["summary"]["radiusSignal"], "1")
+        self.assertEqual(len(response.data["summary"]["endpointDetails"]), 2)
+        self.assertTrue(response.data["preview"]["tertiaryLineSeries"])
 
     def test_convergence_lane_reports_test_taxonomy(self):
         url = reverse("laboratory-series-limit-solve")
@@ -607,3 +664,82 @@ class SeriesLimitSolveApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["summary"]["testFamily"], "ratio test")
         self.assertEqual(response.data["summary"]["secondaryTestFamily"], "root/comparison cross-check")
+        proof_step = next(step for step in response.data["exact"]["steps"] if step["title"] == "Proof helper")
+        self.assertIsNotNone(proof_step["latex"])
+
+    def test_cesaro_lane_uses_dedicated_method_label(self):
+        url = reverse("laboratory-series-limit-solve")
+        response = self.client.post(
+            url,
+            {"mode": "series", "expression": "sum((-1)^n, n=0..inf)", "auxiliary": "Cesaro", "dimension": "summability"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["exact"]["method_label"], "Cesaro summability lane")
+        self.assertEqual(response.data["summary"]["specialFamilySignal"], "Cesaro summability candidate")
+
+
+class SavedLaboratoryResultApiTests(APITestCase):
+    def setUp(self):
+        self.result = SavedLaboratoryResult.objects.create(
+            module_slug="integral-studio",
+            module_title="Integral Studio",
+            mode="single",
+            title="Integral result packet",
+            summary="Exact symbolic result ready",
+            report_markdown="# Integral Report\n\n- Result: 1/3",
+            input_snapshot={"expression": "x^2", "lower": "0", "upper": "1"},
+            structured_payload={"moduleSlug": "integral-studio", "kind": "single", "title": "Integral block"},
+            metadata={"sourceLabel": "Integral Studio"},
+        )
+
+    def test_can_create_saved_result(self):
+        url = reverse("laboratory-result-list")
+        response = self.client.post(
+            url,
+            {
+                "module_slug": "matrix-studio",
+                "module_title": "Matrix Studio",
+                "mode": "algebra",
+                "title": "Matrix audit",
+                "summary": "Determinant and rank ready",
+                "report_markdown": "# Matrix Report\n\n- determinant: 5",
+                "input_snapshot": {"expression": "2 1; 1 3", "dimension": "2x2"},
+                "structured_payload": {"moduleSlug": "matrix-studio", "kind": "algebra", "title": "Matrix block"},
+                "metadata": {"sourceLabel": "Matrix Studio"},
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["module_slug"], "matrix-studio")
+        self.assertTrue(response.data["id"])
+
+    def test_list_saved_results_supports_module_filter(self):
+        SavedLaboratoryResult.objects.create(
+            module_slug="probability-studio",
+            module_title="Probability Studio",
+            mode="descriptive",
+            title="Probability audit",
+            summary="Sample moments ready",
+            report_markdown="# Probability Report\n\n- mean: 3",
+            input_snapshot={"dataset": "1,2,3,4,5"},
+            structured_payload={"moduleSlug": "probability-studio", "kind": "descriptive", "title": "Probability block"},
+            metadata={"sourceLabel": "Probability Studio"},
+        )
+
+        url = reverse("laboratory-result-list")
+        response = self.client.get(url, {"module_slug": "integral-studio"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["module_slug"], "integral-studio")
+
+    def test_retrieve_saved_result_by_public_id(self):
+        url = reverse("laboratory-result-detail", args=[self.result.public_id])
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["title"], self.result.title)
+        self.assertEqual(response.data["structured_payload"]["moduleSlug"], "integral-studio")
